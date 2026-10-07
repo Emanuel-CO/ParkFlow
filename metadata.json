@@ -1,0 +1,6 @@
+{
+  "name": "ParkFlow - Sistema Inteligente de Parqueadero",
+  "description": "Sistema operativo de gestión inteligente de parqueadero, control de aforo en tiempo real, registro de ingresos, liquidación automatizada y auditoría.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

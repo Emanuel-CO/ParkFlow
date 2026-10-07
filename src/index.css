@@ -1,0 +1,100 @@
+@import "tailwindcss";
+
+@theme {
+  --color-primary: #00236f;
+  --color-primary-container: #1e3a8a;
+  --color-on-primary: #ffffff;
+  --color-on-primary-container: #90a8ff;
+  --color-primary-fixed: #dce1ff;
+  --color-primary-fixed-dim: #b6c4ff;
+  
+  --color-secondary: #0051d5;
+  --color-secondary-container: #316bf3;
+  --color-on-secondary: #ffffff;
+  --color-secondary-fixed: #dbe1ff;
+  --color-secondary-fixed-dim: #b4c5ff;
+
+  --color-tertiary: #222a3e;
+  --color-on-tertiary: #ffffff;
+  --color-tertiary-container: #384055;
+  --color-on-tertiary-container: #a4acc5;
+
+  --color-surface: #f8f9ff;
+  --color-surface-dim: #cbdbf5;
+  --color-surface-bright: #f8f9ff;
+  --color-surface-canvas: #f8fafc;
+  --color-surface-card: #ffffff;
+  --color-surface-border: #e2e8f0;
+  --color-surface-container-lowest: #ffffff;
+  --color-surface-container-low: #eff4ff;
+  --color-surface-container: #e5eeff;
+  --color-surface-container-high: #dce9ff;
+  --color-surface-container-highest: #d3e4fe;
+  
+  --color-on-surface: #0b1c30;
+  --color-on-surface-variant: #444651;
+  --color-text-primary: #0f172a;
+  --color-text-secondary: #475569;
+  --color-outline: #757682;
+  --color-outline-variant: #c5c5d3;
+
+  --color-status-available: #10b981;
+  --color-status-available-bg: #ecfdf5;
+  --color-status-occupied: #ef4444;
+  --color-status-occupied-bg: #fef2f2;
+  --color-status-warning: #f59e0b;
+  --color-status-warning-bg: #fffbeb;
+
+  --color-error: #ba1a1a;
+  --color-error-container: #ffdad6;
+  --color-on-error: #ffffff;
+
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+  --font-plate: 'JetBrains Mono', monospace;
+}
+
+@layer utilities {
+  .font-label-plate {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+  }
+  .font-label-code {
+    font-family: 'JetBrains Mono', monospace;
+    letter-spacing: 0.05em;
+  }
+}
+
+/* Material Symbols standard style */
+.material-symbols-outlined {
+  font-family: 'Material Symbols Outlined';
+  font-weight: normal;
+  font-style: normal;
+  font-size: 24px;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-block;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  -webkit-font-feature-settings: 'liga';
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Scrollbar polish */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
