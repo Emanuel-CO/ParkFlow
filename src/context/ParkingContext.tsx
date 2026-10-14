@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback, useRef } from 'react';
 import { ParkingCell, Movement, Transaction, TariffScheme, ActiveView, VehicleType, CapacityThresholdSettings, AlertSoundType } from '../types/parking.ts';
 import { playCapacityAlertSound } from '../utils/audioAlert.ts';
+import { ParkFlowApi, DbStatusResponse } from '../services/api.ts';
 
 interface ToastData {
   id: string;
@@ -56,6 +57,14 @@ interface ParkingContextType {
   simulateCapacity: (percent: number) => void;
   resetSimulatedCapacity: () => void;
   isSimulatedCapacity: boolean;
+  // XAMPP & MySQL Database state
+  isDbConnected: boolean;
+  isDbSyncing: boolean;
+  dbInfo: DbStatusResponse | null;
+  isXamppModalOpen: boolean;
+  setIsXamppModalOpen: (open: boolean) => void;
+  reconnectDb: () => Promise<void>;
+  initializeDatabase: () => Promise<void>;
 }
 
 const defaultThresholdSettings: CapacityThresholdSettings = {
@@ -98,12 +107,6 @@ function generateInitialCells(): ParkingCell[] {
     'A-22': { plate: 'WSX-334', time: '08:50 AM', duration: '4h 42m', total: 22500 },
     'A-23': { plate: 'EDC-556', time: '12:20 PM', duration: '1h 12m', total: 9000 },
     'A-25': { plate: 'RFV-778', time: '10:45 AM', duration: '2h 47m', total: 13500 },
-    'A-26': { plate: 'TGB-990', time: '13:05 PM', duration: '0h 27m', total: 4500 },
-    'A-27': { plate: 'YHN-223', time: '11:10 AM', duration: '2h 22m', total: 13500 },
-    'A-28': { plate: 'UJM-445', time: '09:30 AM', duration: '4h 02m', total: 22500 },
-    'A-29': { plate: 'IKL-667', time: '12:55 PM', duration: '0h 37m', total: 4500 },
-    'A-30': { plate: 'OLP-889', time: '10:00 AM', duration: '3h 32m', total: 18000 },
-    'A-18': { plate: 'VBN-321', time: '12:10 PM', duration: '1h 22m', total: 9000 },
   };
 
   for (let i = 1; i <= 30; i++) {
@@ -115,7 +118,7 @@ function generateInitialCells(): ParkingCell[] {
         category: 'Carro',
         status: 'blocked',
         ratePerHour: 4500,
-        maintenanceReason: 'SENSOR REPARACIÓN',
+        maintenanceReason: 'CALIBRACIÓN DE SENSOR',
       });
     } else if (zoneAOccupied[id]) {
       const occ = zoneAOccupied[id];
@@ -143,10 +146,11 @@ function generateInitialCells(): ParkingCell[] {
     }
   }
 
-  // Zona B: 20 Motocicletas (B-01 to B-20)
+  // Zona B: 20 Motos (B-01 to B-20)
   const zoneBOccupied: Record<string, { plate: string; time: string; duration: string; total: number }> = {
     'B-01': { plate: 'WZF-12D', time: '12:00 PM', duration: '1h 32m', total: 4400 },
-    'B-03': { plate: 'QAX-89F', time: '13:05 PM', duration: '0h 27m', total: 2200 },
+    'B-03': { plate: 'XTR-45A', time: '11:10 AM', duration: '2h 22m', total: 6600 },
+    'B-04': { plate: 'MNB-78C', time: '10:00 AM', duration: '3h 32m', total: 8800 },
     'B-06': { plate: 'MTO-89F', time: '12:45 PM', duration: '1h 30m', total: 4400 },
     'B-07': { plate: 'KJH-23B', time: '11:30 AM', duration: '2h 02m', total: 6600 },
     'B-09': { plate: 'BKN-032', time: '13:00 PM', duration: '0h 32m', total: 2200 },
@@ -216,6 +220,7 @@ const initialTransactions: Transaction[] = [
     entryTime: '24/10 11:20:10',
     entryTimestamp: Date.now() - 10000000,
     exitTime: '24/10 14:05:40',
+    exitTimestamp: Date.now() - 600000,
     duration: '2h 45m',
     snapshotRate: 4500,
     totalPaid: 13500,
@@ -231,6 +236,7 @@ const initialTransactions: Transaction[] = [
     entryTime: '24/10 12:45:00',
     entryTimestamp: Date.now() - 6000000,
     exitTime: '24/10 14:15:22',
+    exitTimestamp: Date.now() - 300000,
     duration: '1h 30m',
     snapshotRate: 2200,
     totalPaid: 4400,
@@ -260,6 +266,7 @@ const initialTransactions: Transaction[] = [
     entryTime: '24/10 10:15:00',
     entryTimestamp: Date.now() - 15000000,
     exitTime: '24/10 10:19:12',
+    exitTimestamp: Date.now() - 14760000,
     duration: '4 min',
     snapshotRate: 4500,
     totalPaid: 0,
@@ -276,6 +283,7 @@ const initialTransactions: Transaction[] = [
     entryTime: '24/10 09:00:20',
     entryTimestamp: Date.now() - 20000000,
     exitTime: '24/10 13:30:10',
+    exitTimestamp: Date.now() - 3600000,
     duration: '4h 30m',
     snapshotRate: 4500,
     totalPaid: 22500,
@@ -300,6 +308,12 @@ export const ParkingProvider: React.FC<{ children: ReactNode }> = ({ children })
   const [todayEntriesCount, setTodayEntriesCount] = useState<number>(142);
   const [toasts, setToasts] = useState<ToastData[]>([]);
   const [selectedVehicleForCheckout, setSelectedVehicleForCheckout] = useState<any>(null);
+
+  // XAMPP & MySQL Database state
+  const [isDbConnected, setIsDbConnected] = useState<boolean>(false);
+  const [isDbSyncing, setIsDbSyncing] = useState<boolean>(false);
+  const [dbInfo, setDbInfo] = useState<DbStatusResponse | null>(null);
+  const [isXamppModalOpen, setIsXamppModalOpen] = useState<boolean>(false);
 
   // Threshold & Notification Settings
   const [thresholdSettings, setThresholdSettings] = useState<CapacityThresholdSettings>(() => {
@@ -332,6 +346,117 @@ export const ParkingProvider: React.FC<{ children: ReactNode }> = ({ children })
   const removeToast = useCallback((id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
+
+  // Fetch all data from MySQL via PHP API
+  const loadDataFromDb = useCallback(async (silent = false) => {
+    try {
+      if (!silent) setIsDbSyncing(true);
+      const [dbCells, dbTariffs, dbMovements, dbTransactions] = await Promise.all([
+        ParkFlowApi.getCells(),
+        ParkFlowApi.getTariffs(),
+        ParkFlowApi.getMovements(),
+        ParkFlowApi.getTransactions(),
+      ]);
+
+      if (dbCells && dbCells.length > 0) setCells(dbCells);
+      if (dbTariffs && Object.keys(dbTariffs).length > 0) setTariffs(dbTariffs);
+      if (dbMovements) setMovements(dbMovements);
+      if (dbTransactions) {
+        setTransactions(dbTransactions);
+        const revenue = dbTransactions
+          .filter((t) => t.status === 'Completado')
+          .reduce((acc, t) => acc + (t.totalPaid || 0), 0);
+        setTodayRevenue(revenue);
+      }
+
+      const statusRes = await ParkFlowApi.checkStatus();
+      setDbInfo(statusRes);
+      if (statusRes.metrics) {
+        setTodayEntriesCount(statusRes.metrics.todayEntriesCount);
+      }
+    } catch (err: any) {
+      console.warn('Error al cargar datos desde XAMPP MySQL:', err);
+      if (!silent) {
+        showToast('Error de comunicación con MySQL en XAMPP', 'error');
+      }
+    } finally {
+      if (!silent) setIsDbSyncing(false);
+    }
+  }, [showToast]);
+
+  // Reconnect / Test connection to XAMPP
+  const reconnectDb = useCallback(async () => {
+    setIsDbSyncing(true);
+    try {
+      const status = await ParkFlowApi.checkStatus();
+      setDbInfo(status);
+      if (status.connected) {
+        setIsDbConnected(true);
+        await loadDataFromDb(true);
+        showToast('¡Conectado exitosamente con XAMPP y MySQL!', 'success');
+      } else {
+        setIsDbConnected(false);
+        showToast('MySQL en XAMPP no responde. Inicia Apache y MySQL en XAMPP.', 'warning');
+      }
+    } catch {
+      setIsDbConnected(false);
+      showToast('No se pudo conectar con http://localhost/parkflow-api', 'error');
+    } finally {
+      setIsDbSyncing(false);
+    }
+  }, [loadDataFromDb, showToast]);
+
+  // Initialize or Reset MySQL Database
+  const initializeDatabase = useCallback(async () => {
+    setIsDbSyncing(true);
+    try {
+      const res = await ParkFlowApi.setupDatabase();
+      if (res.success) {
+        showToast('¡Base de datos y tablas creadas exitosamente en MySQL!', 'success');
+        await reconnectDb();
+      } else {
+        showToast(res.message || 'Error al inicializar la base de datos', 'error');
+      }
+    } catch (err: any) {
+      showToast('Error al conectar con setup_db.php en XAMPP', 'error');
+    } finally {
+      setIsDbSyncing(false);
+    }
+  }, [reconnectDb, showToast]);
+
+  // Initial connect on mount
+  useEffect(() => {
+    let isMounted = true;
+    (async () => {
+      try {
+        const status = await ParkFlowApi.checkStatus();
+        if (!isMounted) return;
+        setDbInfo(status);
+        if (status.connected) {
+          setIsDbConnected(true);
+          await loadDataFromDb(true);
+          showToast('🟢 Conectado con MySQL en XAMPP (parkflow_db)', 'success');
+        } else {
+          setIsDbConnected(false);
+        }
+      } catch {
+        if (isMounted) setIsDbConnected(false);
+      }
+    })();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [loadDataFromDb, showToast]);
+
+  // Periodic soft sync every 15s when connected
+  useEffect(() => {
+    if (!isDbConnected || isSimulatedCapacity) return;
+    const interval = setInterval(() => {
+      loadDataFromDb(true);
+    }, 15000);
+    return () => clearInterval(interval);
+  }, [isDbConnected, isSimulatedCapacity, loadDataFromDb]);
 
   const updateThresholdSettings = useCallback((newSettings: Partial<CapacityThresholdSettings>) => {
     setThresholdSettings((prev) => {
@@ -368,7 +493,7 @@ export const ParkingProvider: React.FC<{ children: ReactNode }> = ({ children })
   const totalCapacity = cells.length; // 50
   const occupiedCells = cells.filter((c) => c.status === 'occupied');
   const totalOccupied = occupiedCells.length;
-  const occupancyPercent = Math.round((totalOccupied / totalCapacity) * 100);
+  const occupancyPercent = totalCapacity > 0 ? Math.round((totalOccupied / totalCapacity) * 100) : 0;
 
   const carCells = cells.filter((c) => c.zone === 'Zona A');
   const occupiedCarsCount = carCells.filter((c) => c.status === 'occupied').length;
@@ -529,7 +654,7 @@ export const ParkingProvider: React.FC<{ children: ReactNode }> = ({ children })
 
       const currentTariff = tariffs[category] || tariffs['Carro'];
 
-      // Update cell
+      // Update cell optimistically
       setCells((prev) =>
         prev.map((cell) =>
           cell.id === targetCell!.id
@@ -584,14 +709,28 @@ export const ParkingProvider: React.FC<{ children: ReactNode }> = ({ children })
       setTodayEntriesCount((prev) => prev + 1);
       showToast(`¡Ingreso Registrado! Vehículo ${sanitizedPlate} asignado a celda ${targetCell.id}`, 'success');
 
+      // Dispatch async synchronization with MySQL in XAMPP
+      if (isDbConnected) {
+        ParkFlowApi.registerEntry(sanitizedPlate, category, targetCell.id, notes).then((apiRes) => {
+          if (!apiRes.success) {
+            showToast(`Aviso MySQL: ${apiRes.error}`, 'warning');
+          } else {
+            // Refresh live from database to sync exact MySQL IDs and timestamps
+            loadDataFromDb(true);
+          }
+        }).catch((err) => {
+          console.warn('Error syncing entry to MySQL:', err);
+        });
+      }
+
       return { success: true, ticketId: ticketNum, cellId: targetCell.id };
     },
-    [cells, tariffs, showToast]
+    [cells, tariffs, thresholdSettings.autoBlockOnMax, totalOccupied, totalCapacity, isDbConnected, showToast, loadDataFromDb]
   );
 
   // Process Checkout
   const processCheckout = useCallback(
-    (cellIdOrPlate: string, paymentMethod: 'Efectivo' | 'Bancolombia' | 'QR Nequi/Davi' | 'Datáfono' = 'Efectivo') => {
+    (cellIdOrPlate: string, paymentMethod: 'Efectivo' | 'Bancolombia' | 'QR Nequi/Davi' | 'Datáfono' = 'Efectivo', amountPaid?: number) => {
       const query = cellIdOrPlate.trim().toUpperCase();
       const targetCell = cells.find(
         (c) => c.status === 'occupied' && (c.id.toUpperCase() === query || c.plate?.toUpperCase() === query)
@@ -612,12 +751,12 @@ export const ParkingProvider: React.FC<{ children: ReactNode }> = ({ children })
       // Tariff rule: 1/4 fraction rounding
       const fractionQuarter = Math.ceil(remainingMinutes / 15);
       const fractionFee = (fractionQuarter * (ratePerHour / 4));
-      const calculatedTotal = Math.round(fullHours * ratePerHour + fractionFee);
+      const calculatedTotal = amountPaid !== undefined ? amountPaid : Math.round(fullHours * ratePerHour + fractionFee);
 
       const now = new Date();
       const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')} ${now.getHours() >= 12 ? 'PM' : 'AM'}`;
 
-      // Free cell
+      // Free cell optimistically
       setCells((prev) =>
         prev.map((cell) =>
           cell.id === targetCell.id
@@ -666,6 +805,19 @@ export const ParkingProvider: React.FC<{ children: ReactNode }> = ({ children })
       setTodayRevenue((prev) => prev + calculatedTotal);
       showToast(`Cobro confirmado: $${calculatedTotal.toLocaleString('es-CO')} COP. Celda ${targetCell.id} liberada.`, 'success');
 
+      // Dispatch async checkout to MySQL in XAMPP
+      if (isDbConnected) {
+        ParkFlowApi.processCheckout(targetCell.id, paymentMethod, calculatedTotal).then((res) => {
+          if (!res.success) {
+            showToast(`Aviso MySQL: ${res.error}`, 'warning');
+          } else {
+            loadDataFromDb(true);
+          }
+        }).catch((err) => {
+          console.warn('Error syncing checkout to MySQL:', err);
+        });
+      }
+
       return {
         success: true,
         total: calculatedTotal,
@@ -673,7 +825,7 @@ export const ParkingProvider: React.FC<{ children: ReactNode }> = ({ children })
         cellId: targetCell.id,
       };
     },
-    [cells, showToast]
+    [cells, isDbConnected, showToast, loadDataFromDb]
   );
 
   // Toggle Cell Maintenance
@@ -696,8 +848,16 @@ export const ParkingProvider: React.FC<{ children: ReactNode }> = ({ children })
           return c;
         })
       );
+
+      if (isDbConnected) {
+        ParkFlowApi.toggleMaintenance(cellId, reason).then(() => {
+          loadDataFromDb(true);
+        }).catch((err) => {
+          console.warn('Error updating maintenance in MySQL:', err);
+        });
+      }
     },
-    [showToast]
+    [isDbConnected, showToast, loadDataFromDb]
   );
 
   // Update Tariffs (with PRD 3.4 Snapshot rule)
@@ -717,8 +877,16 @@ export const ParkingProvider: React.FC<{ children: ReactNode }> = ({ children })
         `Snapshot ${nextVersion} generado: Tarifa de ${category} fijada a $${newRate.toLocaleString('es-CO')}/h (${reason})`,
         'info'
       );
+
+      if (isDbConnected) {
+        ParkFlowApi.updateTariff(category, newRate, newMinFraction).then(() => {
+          loadDataFromDb(true);
+        }).catch((err) => {
+          console.warn('Error updating tariff in MySQL:', err);
+        });
+      }
     },
-    [tariffs, showToast]
+    [tariffs, isDbConnected, showToast, loadDataFromDb]
   );
 
   // Export to CSV
@@ -753,7 +921,7 @@ export const ParkingProvider: React.FC<{ children: ReactNode }> = ({ children })
   // Export to Excel simulation
   const exportToExcel = useCallback(() => {
     exportToCsv(); // triggers compatible spreadsheet CSV download
-    showToast('Archivo Excel consolidado (.xlsx) generado con 584 registros.', 'success');
+    showToast('Archivo Excel consolidado (.xlsx) generado con éxito.', 'success');
   }, [exportToCsv, showToast]);
 
   return (
@@ -800,6 +968,13 @@ export const ParkingProvider: React.FC<{ children: ReactNode }> = ({ children })
         simulateCapacity,
         resetSimulatedCapacity,
         isSimulatedCapacity,
+        isDbConnected,
+        isDbSyncing,
+        dbInfo,
+        isXamppModalOpen,
+        setIsXamppModalOpen,
+        reconnectDb,
+        initializeDatabase,
       }}
     >
       {children}

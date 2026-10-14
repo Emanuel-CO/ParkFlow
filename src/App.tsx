@@ -9,6 +9,7 @@ import { TarifasCeldas } from './components/TarifasCeldas.tsx';
 import { ReportesAuditoria } from './components/ReportesAuditoria.tsx';
 import { TicketDetailModal } from './components/TicketDetailModal.tsx';
 import { ToastContainer } from './components/ToastContainer.tsx';
+import { XamppStatusModal } from './components/XamppStatusModal.tsx';
 
 const AppContent: React.FC = () => {
   const { activeView } = useParking();
@@ -32,6 +33,7 @@ const AppContent: React.FC = () => {
 
       {/* Modals & Global Overlays */}
       <TicketDetailModal />
+      <XamppStatusModal />
       <ToastContainer />
     </div>
   );

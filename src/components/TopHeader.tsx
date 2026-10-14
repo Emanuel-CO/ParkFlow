@@ -12,13 +12,16 @@ export const TopHeader: React.FC = () => {
     occupancyPercent,
     thresholdSettings,
     setActiveView,
+    isDbConnected,
+    isDbSyncing,
+    setIsXamppModalOpen,
   } = useParking();
   const [showNotificationMenu, setShowNotificationMenu] = useState(false);
 
   return (
     <header className="fixed top-0 left-64 right-0 h-16 bg-surface-container-lowest/90 backdrop-blur-xl border-b border-surface-border shadow-[0_1px_8px_rgba(0,0,0,0.04)] z-40 flex items-center justify-between px-6">
-      {/* Left items: Live status & Clock */}
-      <div className="flex items-center gap-4">
+      {/* Left items: Live status, Clock & MySQL XAMPP badge */}
+      <div className="flex items-center gap-3">
         <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-[12px] font-semibold transition-colors ${
           isCapacityCritical
             ? 'bg-red-100 text-red-700 animate-pulse'
@@ -38,10 +41,35 @@ export const TopHeader: React.FC = () => {
           </span>
         </div>
 
-        <div className="hidden md:flex items-center gap-2 font-label-code text-[12px] text-on-surface-variant bg-surface-canvas px-2.5 py-1 rounded-md border border-surface-border/50">
+        <div className="hidden lg:flex items-center gap-2 font-label-code text-[12px] text-on-surface-variant bg-surface-canvas px-2.5 py-1 rounded-md border border-surface-border/50">
           <span className="material-symbols-outlined text-[16px] text-secondary">schedule</span>
           <span>{currentTimeString || '14:32:45 - 24 Oct 2024'}</span>
         </div>
+
+        {/* XAMPP & MySQL Status Badge */}
+        <button
+          onClick={() => setIsXamppModalOpen(true)}
+          type="button"
+          title="Ver estado de conexión con XAMPP y MySQL"
+          className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[12px] font-semibold border transition-all ${
+            isDbConnected
+              ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/20 shadow-sm'
+              : 'bg-amber-500/10 border-amber-500/30 text-amber-800 dark:text-amber-200 hover:bg-amber-500/20'
+          }`}
+        >
+          <span className={`w-2 h-2 rounded-full ${
+            isDbSyncing
+              ? 'bg-amber-400 animate-ping'
+              : isDbConnected
+              ? 'bg-emerald-500 animate-pulse'
+              : 'bg-amber-500'
+          }`}></span>
+          <span className="font-mono text-[11px] font-bold">XAMPP</span>
+          <span className="hidden sm:inline text-[11px]">
+            {isDbSyncing ? 'Sincronizando' : isDbConnected ? 'MySQL Activo' : 'Offline'}
+          </span>
+          <span className="material-symbols-outlined text-[14px] opacity-70">tune</span>
+        </button>
       </div>
 
       {/* Right items: Operator badge, Notifications, Profile avatar */}
