@@ -15,7 +15,7 @@ const AppContent: React.FC = () => {
   const { activeView } = useParking();
 
   return (
-    <div className="min-h-screen bg-surface flex flex-col text-on-surface selection:bg-secondary/20 selection:text-primary">
+    <div className="min-h-screen flex flex-col text-on-surface" style={{ background: '#020510' }}>
       {/* Fixed Sidebar */}
       <Sidebar />
 
@@ -23,12 +23,15 @@ const AppContent: React.FC = () => {
       <TopHeader />
 
       {/* Main App Content Body (offset by sidebar w-64 and header h-16) */}
-      <main className="ml-64 pt-16 flex-1 flex flex-col min-h-screen">
-        {activeView === 'panel-operativo' && <PanelOperativo />}
-        {activeView === 'registro-de-entrada' && <RegistroEntrada />}
-        {activeView === 'salida-y-cobro' && <SalidaCobro />}
-        {activeView === 'tarifas-y-celdas' && <TarifasCeldas />}
-        {activeView === 'reportes-y-auditoria' && <ReportesAuditoria />}
+      <main className="ml-64 pt-16 flex-1 flex flex-col min-h-screen relative">
+        {/* Page transition wrapper */}
+        <div key={activeView} className="animate-slide-right flex-1 flex flex-col">
+          {activeView === 'panel-operativo'      && <PanelOperativo />}
+          {activeView === 'registro-de-entrada'  && <RegistroEntrada />}
+          {activeView === 'salida-y-cobro'       && <SalidaCobro />}
+          {activeView === 'tarifas-y-celdas'     && <TarifasCeldas />}
+          {activeView === 'reportes-y-auditoria' && <ReportesAuditoria />}
+        </div>
       </main>
 
       {/* Modals & Global Overlays */}

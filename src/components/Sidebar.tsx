@@ -1,8 +1,6 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParking } from '../context/ParkingContext.tsx';
 import { ActiveView } from '../types/parking.ts';
-
-const LOGO_URL = "https://lh3.googleusercontent.com/aida/AEtjO1UTmHa9BmyIdpsw77V-o0vBaPgnciUuQWDlAxrDchqq8n3E9O3SuGIx2ksKkFZenkIgj7f6z7e9JuCB0uk1_JK2zQTKmiwXOzOrn6GgJorRyBHHqv5wwFDodC4uaU9l6XIKpwxhq1_LpPtXNsPnxoualHA6EcyS3-58NHWURqjd2eem6J2HavMyUf3Q2VybDPj9T6EJcmUoa5HGAScJqC3_c_dvEzKPNCoQh3jp3KC-aGaZLv2Pqa1mcwg";
 
 export const Sidebar: React.FC = () => {
   const {
@@ -13,119 +11,273 @@ export const Sidebar: React.FC = () => {
     totalCapacity,
     isCapacityCritical,
     isCapacityWarning,
+    isDbConnected,
   } = useParking();
 
-  const navItems: { id: ActiveView; label: string; icon: string }[] = [
-    { id: 'panel-operativo', label: 'Panel Operativo', icon: 'grid_view' },
-    { id: 'registro-de-entrada', label: 'Registro de Entrada', icon: 'login' },
-    { id: 'salida-y-cobro', label: 'Salida y Cobro', icon: 'point_of_sale' },
-    { id: 'tarifas-y-celdas', label: 'Tarifas y Celdas', icon: 'tune' },
-    { id: 'reportes-y-auditoria', label: 'Reportes y Auditoría', icon: 'analytics' },
+  const [time, setTime] = useState(new Date());
+  const [bootDone, setBootDone] = useState(false);
+
+  useEffect(() => {
+    const t = setInterval(() => setTime(new Date()), 1000);
+    const b = setTimeout(() => setBootDone(true), 600);
+    return () => { clearInterval(t); clearTimeout(b); };
+  }, []);
+
+  const navItems: { id: ActiveView; label: string; sub: string; icon: string; color: string }[] = [
+    { id: 'panel-operativo',       label: 'Panel Operativo',    sub: 'HUD Telemetría 3D',       icon: 'grid_view',     color: 'cyan'   },
+    { id: 'registro-de-entrada',   label: 'Registro Entrada',   sub: 'Escáner Óptico LPR',      icon: 'login',         color: 'emerald'},
+    { id: 'salida-y-cobro',        label: 'Salida y Cobro',     sub: 'Liquidación Quantum',     icon: 'point_of_sale', color: 'violet' },
+    { id: 'tarifas-y-celdas',      label: 'Tarifas y Celdas',   sub: 'Matrices de Control',     icon: 'tune',          color: 'amber'  },
+    { id: 'reportes-y-auditoria',  label: 'Reportes',           sub: 'Ledger Blockchain',       icon: 'analytics',     color: 'cyan'   },
   ];
 
+  const colorMap: Record<string, { text: string; border: string; bg: string; glow: string; shadow: string }> = {
+    cyan:    { text: 'text-cyan-300',    border: 'border-cyan-400/40',    bg: 'bg-cyan-500/15',    glow: 'text-cyan-400',    shadow: 'shadow-[0_0_15px_rgba(0,240,255,0.3)]'   },
+    emerald: { text: 'text-emerald-300', border: 'border-emerald-400/40', bg: 'bg-emerald-500/15', glow: 'text-emerald-400', shadow: 'shadow-[0_0_15px_rgba(0,255,157,0.3)]'   },
+    violet:  { text: 'text-violet-300',  border: 'border-violet-400/40',  bg: 'bg-violet-500/15',  glow: 'text-violet-400',  shadow: 'shadow-[0_0_15px_rgba(139,92,246,0.3)]'  },
+    amber:   { text: 'text-amber-300',   border: 'border-amber-400/40',   bg: 'bg-amber-500/15',   glow: 'text-amber-400',   shadow: 'shadow-[0_0_15px_rgba(255,183,3,0.3)]'   },
+  };
+
+  const statusColor = isCapacityCritical ? 'red' : isCapacityWarning ? 'amber' : 'emerald';
+  const statusLabel = isCapacityCritical ? 'AFORO CRÍTICO' : isCapacityWarning ? 'ALERTA AFORO' : 'SISTEMA OK';
+
+  const padTime = (n: number) => String(n).padStart(2, '0');
+  const timeStr = `${padTime(time.getHours())}:${padTime(time.getMinutes())}:${padTime(time.getSeconds())}`;
+
   return (
-    <aside className="fixed left-0 top-0 h-full w-64 bg-surface-container-low border-r border-surface-border shadow-[0_1px_8px_rgba(0,0,0,0.04)] z-50 flex flex-col justify-between py-4">
-      <div className="flex flex-col">
-        {/* Brand Header */}
-        <div className="flex items-center gap-2.5 px-4 pb-5">
-          <img
-            alt="ParkFlow Logo"
-            className="h-8 w-auto object-contain"
-            src={LOGO_URL}
-            onError={(e) => {
-              // Fallback if logo fails
-              (e.target as HTMLElement).style.display = 'none';
-            }}
-          />
+    <aside className="fixed left-0 top-0 h-full w-64 z-50 flex flex-col" style={{ background: 'linear-gradient(180deg, rgba(2,5,16,0.97) 0%, rgba(4,8,24,0.98) 100%)' }}>
+      
+      {/* Neon left edge glow */}
+      <div className="absolute right-0 top-0 bottom-0 w-px bg-gradient-to-b from-transparent via-cyan-500/40 to-transparent" />
+      <div className="absolute right-0 top-0 bottom-0 w-4 bg-gradient-to-r from-transparent to-transparent pointer-events-none" style={{ filter: 'blur(8px)', background: 'linear-gradient(to right, transparent, rgba(0,240,255,0.04))' }} />
+
+      {/* Ambient orbs */}
+      <div className="absolute top-20 -left-10 w-40 h-40 rounded-full pointer-events-none" style={{ background: 'radial-gradient(circle, rgba(0,240,255,0.06) 0%, transparent 70%)' }} />
+      <div className="absolute bottom-40 -left-10 w-32 h-32 rounded-full pointer-events-none" style={{ background: 'radial-gradient(circle, rgba(139,92,246,0.07) 0%, transparent 70%)' }} />
+
+      {/* ── BRAND HEADER ── */}
+      <div className="px-5 pt-4 pb-4" style={{ borderBottom: '1px solid rgba(0,240,255,0.1)' }}>
+        <div className="flex items-center gap-3">
+          {/* Logo */}
+          <div className="relative w-11 h-11 shrink-0">
+            <div className="absolute inset-0 rounded-xl bg-gradient-to-tr from-cyan-500 to-violet-600 animate-spin-slow opacity-70 blur-[2px]" />
+            <div className="relative w-full h-full rounded-xl bg-gradient-to-tr from-cyan-600 to-violet-700 flex items-center justify-center shadow-[0_0_20px_rgba(0,240,255,0.5)]">
+              <span className="material-symbols-outlined text-[22px] text-black font-black">electric_bolt</span>
+            </div>
+            {/* Live dot */}
+            <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-emerald-400 shadow-[0_0_8px_#00ff9d] flex items-center justify-center">
+              <span className="w-3 h-3 rounded-full bg-emerald-400 animate-ping absolute opacity-75" />
+            </span>
+          </div>
+
           <div className="flex flex-col">
-            <span className="font-sans text-[18px] font-bold text-primary tracking-tight leading-tight">
-              ParkFlow
-            </span>
-            <span className="font-sans text-[11px] font-medium text-on-surface-variant">
-              Smart Parking OS
+            <div className="flex items-center gap-2">
+              <span className="font-hud text-[16px] font-black tracking-wider text-holographic">PARKFLOW</span>
+              <span className="cyber-tag text-cyan-400 border-cyan-400/40 bg-cyan-500/10">2099</span>
+            </div>
+            <span className="font-mono text-[9px] tracking-widest text-slate-500 flex items-center gap-1 mt-0.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse-subtle inline-block" />
+              TELEMETRY OS · v3.4.1
             </span>
           </div>
         </div>
-
-        {/* Live Facility Occupancy Card */}
-        <div className="px-4 mb-4">
-          <div className={`p-3 rounded-xl border transition-all ${
-            isCapacityCritical
-              ? 'bg-red-50/80 border-red-300 shadow-sm'
-              : isCapacityWarning
-              ? 'bg-amber-50/80 border-amber-300 shadow-xs'
-              : 'bg-surface-card border-surface-border shadow-[0_1px_3px_0_rgba(15,23,42,0.06)]'
-          }`}>
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-1.5">
-                <span className={`w-2 h-2 rounded-full ${
-                  isCapacityCritical ? 'bg-red-600 animate-ping' : isCapacityWarning ? 'bg-amber-500 animate-pulse' : 'bg-status-available animate-pulse'
-                }`}></span>
-                <span className={`font-sans text-[12px] font-semibold ${
-                  isCapacityCritical ? 'text-red-700' : isCapacityWarning ? 'text-amber-700' : 'text-status-available'
-                }`}>
-                  {isCapacityCritical ? 'Aforo Crítico (90%+)' : isCapacityWarning ? 'Aforo Alto' : 'En servicio'}
-                </span>
-              </div>
-              <span className="font-label-code text-[11px] text-on-surface-variant">
-                Sede Central
-              </span>
-            </div>
-            <div className="flex items-center justify-between text-on-surface-variant mb-1.5 text-[12px]">
-              <span className="text-text-secondary">Aforo General</span>
-              <span className={`font-label-code font-bold ${
-                isCapacityCritical ? 'text-red-600' : isCapacityWarning ? 'text-amber-600' : 'text-primary'
-              }`}>
-                {occupancyPercent}%
-              </span>
-            </div>
-            <div className="w-full bg-surface-container-high h-2 rounded-full overflow-hidden">
-              <div
-                className={`h-full rounded-full transition-all duration-700 ${
-                  isCapacityCritical ? 'bg-red-600 animate-pulse' : isCapacityWarning ? 'bg-amber-500' : 'bg-secondary'
-                }`}
-                style={{ width: `${occupancyPercent}%` }}
-              ></div>
-            </div>
-            <div className="flex items-center justify-between mt-1 text-[10px] text-text-secondary font-label-code">
-              <span>{totalOccupied} ocupadas</span>
-              <span>{totalCapacity - totalOccupied} libres</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Navigation Items */}
-        <nav className="flex flex-col gap-1 px-3">
-          {navItems.map((item) => {
-            const isActive = activeView === item.id;
-            return (
-              <button
-                key={item.id}
-                onClick={() => setActiveView(item.id)}
-                className={`flex items-center gap-2.5 px-3.5 py-2.5 rounded-lg text-left transition-all ${
-                  isActive
-                    ? 'bg-primary-container text-on-primary-container font-semibold shadow-sm'
-                    : 'text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface font-medium'
-                }`}
-              >
-                <span className={`material-symbols-outlined text-[20px] ${isActive ? 'text-on-primary-container' : 'text-secondary'}`}>
-                  {item.icon}
-                </span>
-                <span className="font-sans text-[13px]">{item.label}</span>
-              </button>
-            );
-          })}
-        </nav>
       </div>
 
-      {/* Footer Info: Station Terminal ID */}
-      <div className="px-4 pt-4 border-t border-surface-border">
-        <div className="bg-surface-container p-2.5 rounded-lg flex items-center justify-between">
-          <div className="flex flex-col">
-            <span className="text-[11px] text-text-secondary">Estación</span>
-            <span className="font-label-code text-[12px] text-primary font-bold">Terminal T-01</span>
+      {/* ── LIVE CLOCK & DB STATUS ── */}
+      <div className="px-4 py-3 flex items-center justify-between" style={{ borderBottom: '1px solid rgba(0,240,255,0.07)' }}>
+        <div className="font-mono text-[14px] font-bold text-cyan-300 glow-text-cyan tracking-widest tabular-nums">
+          {timeStr}
+        </div>
+        <div className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[9px] font-mono font-bold border ${isDbConnected ? 'bg-cyan-500/10 border-cyan-500/30 text-cyan-400' : 'bg-amber-500/10 border-amber-500/30 text-amber-400'}`}>
+          <span className={`w-1.5 h-1.5 rounded-full ${isDbConnected ? 'bg-cyan-400 animate-pulse' : 'bg-amber-400'}`} />
+          {isDbConnected ? 'SQL LIVE' : 'OFFLINE'}
+        </div>
+      </div>
+
+      {/* ── OCCUPANCY RADAR MODULE ── */}
+      <div className="px-4 py-3">
+        <div className={`relative rounded-xl p-3.5 overflow-hidden hud-corners ${
+          isCapacityCritical ? 'hud-corners-red' : isCapacityWarning ? 'hud-corners-amber' : ''
+        }`} style={{
+          background: isCapacityCritical 
+            ? 'linear-gradient(135deg, rgba(60,0,20,0.6) 0%, rgba(20,0,10,0.8) 100%)'
+            : isCapacityWarning
+            ? 'linear-gradient(135deg, rgba(50,30,0,0.6) 0%, rgba(20,12,0,0.8) 100%)'
+            : 'linear-gradient(135deg, rgba(0,20,40,0.6) 0%, rgba(0,8,20,0.8) 100%)',
+          border: `1px solid ${isCapacityCritical ? 'rgba(255,42,109,0.35)' : isCapacityWarning ? 'rgba(255,183,3,0.35)' : 'rgba(0,240,255,0.2)'}`,
+          boxShadow: isCapacityCritical ? '0 0 25px rgba(255,42,109,0.2)' : isCapacityWarning ? '0 0 25px rgba(255,183,3,0.15)' : '0 0 15px rgba(0,240,255,0.08)',
+        }}>
+          {/* Ambient glow */}
+          <div className="absolute -right-4 -bottom-4 w-20 h-20 rounded-full pointer-events-none" style={{
+            background: `radial-gradient(circle, ${isCapacityCritical ? 'rgba(255,42,109,0.12)' : isCapacityWarning ? 'rgba(255,183,3,0.12)' : 'rgba(0,240,255,0.10)'} 0%, transparent 70%)`,
+            filter: 'blur(10px)',
+          }} />
+          
+          {/* Status header */}
+          <div className="flex items-center justify-between mb-2.5">
+            <div className="flex items-center gap-1.5">
+              <div className="relative flex items-center justify-center w-4 h-4">
+                <span className={`w-2.5 h-2.5 rounded-full ${
+                  isCapacityCritical ? 'bg-red-500' : isCapacityWarning ? 'bg-amber-400' : 'bg-emerald-400'
+                } ${isCapacityCritical ? 'animate-ping' : 'animate-pulse'} absolute opacity-70`} />
+                <span className={`w-2 h-2 rounded-full ${
+                  isCapacityCritical ? 'bg-red-500' : isCapacityWarning ? 'bg-amber-400' : 'bg-emerald-400'
+                } relative`} />
+              </div>
+              <span className={`font-hud text-[10px] font-bold tracking-wider ${
+                isCapacityCritical ? 'text-red-400' : isCapacityWarning ? 'text-amber-400' : 'text-cyan-300'
+              }`}>
+                {statusLabel}
+              </span>
+            </div>
           </div>
-          <span className="material-symbols-outlined text-secondary text-[22px]">local_parking</span>
+
+          {/* Occupancy value */}
+          <div className="flex items-baseline gap-2 mb-2">
+            <span className={`font-hud text-4xl font-black tabular-nums leading-none ${
+              isCapacityCritical ? 'text-red-400' : isCapacityWarning ? 'text-amber-400' : 'text-cyan-300'
+            }`} style={{
+              textShadow: isCapacityCritical 
+                ? '0 0 20px rgba(255,42,109,0.8)' 
+                : isCapacityWarning 
+                ? '0 0 20px rgba(255,183,3,0.8)'
+                : '0 0 20px rgba(0,240,255,0.8)',
+            }}>
+              {occupancyPercent}
+            </span>
+            <span className={`font-hud text-lg font-bold ${
+              isCapacityCritical ? 'text-red-500' : isCapacityWarning ? 'text-amber-500' : 'text-cyan-500'
+            }`}>%</span>
+            <span className="font-mono text-[10px] text-slate-500 ml-auto">
+              {totalOccupied}/{totalCapacity}
+            </span>
+          </div>
+
+          {/* Progress bar */}
+          <div className="w-full rounded-full overflow-hidden p-px" style={{
+            background: 'rgba(255,255,255,0.06)',
+            border: '1px solid rgba(255,255,255,0.08)',
+          }}>
+            <div
+              className="h-2.5 rounded-full transition-all duration-700 ease-out"
+              style={{
+                width: `${occupancyPercent}%`,
+                background: isCapacityCritical
+                  ? 'linear-gradient(90deg, #ff2a6d, #ff6b9d)'
+                  : isCapacityWarning
+                  ? 'linear-gradient(90deg, #ffb703, #ffd60a)'
+                  : 'linear-gradient(90deg, #00f0ff, #38bdf8, #00ff9d)',
+                boxShadow: isCapacityCritical
+                  ? '0 0 12px rgba(255,42,109,0.8)'
+                  : isCapacityWarning
+                  ? '0 0 12px rgba(255,183,3,0.8)'
+                  : '0 0 12px rgba(0,240,255,0.7)',
+              }}
+            />
+          </div>
+
+          {/* Stats row */}
+          <div className="flex justify-between mt-2 font-mono text-[10px]">
+            <span className="flex items-center gap-1 text-rose-400">
+              <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+              {totalOccupied} ocupados
+            </span>
+            <span className="flex items-center gap-1 text-emerald-400">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+              {totalCapacity - totalOccupied} libres
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* ── NAVIGATION ── */}
+      <nav className="flex flex-col gap-1 px-3 flex-1 overflow-y-auto mt-1" style={{ scrollbarWidth: 'none' }}>
+        {navItems.map((item, idx) => {
+          const isActive = activeView === item.id;
+          const c = colorMap[item.color];
+          return (
+            <button
+              key={item.id}
+              onClick={() => setActiveView(item.id)}
+              className={`sidebar-nav-item relative group flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-left transition-all duration-200 overflow-hidden ${
+                isActive
+                  ? `${c.bg} ${c.border} border ${c.shadow}`
+                  : 'border border-transparent hover:border-white/8 text-slate-400 hover:text-slate-200'
+              }`}
+              style={{
+                animationDelay: `${idx * 80}ms`,
+              }}
+            >
+              {/* Active indicator */}
+              {isActive && (
+                <span className={`absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-3/4 rounded-r ${
+                  item.color === 'cyan' ? 'bg-cyan-400' :
+                  item.color === 'emerald' ? 'bg-emerald-400' :
+                  item.color === 'violet' ? 'bg-violet-400' :
+                  item.color === 'amber' ? 'bg-amber-400' : 'bg-cyan-400'
+                }`} style={{
+                  boxShadow: item.color === 'cyan' ? '0 0 10px rgba(0,240,255,0.8)' :
+                             item.color === 'emerald' ? '0 0 10px rgba(0,255,157,0.8)' :
+                             item.color === 'violet' ? '0 0 10px rgba(139,92,246,0.8)' :
+                             item.color === 'amber' ? '0 0 10px rgba(255,183,3,0.8)' : '',
+                }} />
+              )}
+
+              {/* Icon */}
+              <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-all ${
+                isActive
+                  ? `${c.bg} ${c.border} border ${c.glow}`
+                  : 'bg-white/4 text-slate-500 group-hover:bg-white/8 group-hover:text-slate-300'
+              }`}>
+                <span className="material-symbols-outlined text-[18px]">{item.icon}</span>
+              </div>
+
+              {/* Label */}
+              <div className="flex flex-col min-w-0">
+                <span className={`font-hud text-[11px] font-bold leading-tight truncate ${
+                  isActive ? 'text-white' : 'text-slate-300 group-hover:text-white'
+                }`}>
+                  {item.label}
+                </span>
+                <span className={`text-[9px] font-mono truncate mt-0.5 ${
+                  isActive ? c.glow : 'text-slate-600 group-hover:text-slate-500'
+                }`}>
+                  {item.sub}
+                </span>
+              </div>
+
+              {/* Active arrow */}
+              {isActive && (
+                <span className={`ml-auto material-symbols-outlined text-[14px] ${c.glow}`}>
+                  chevron_right
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </nav>
+
+      {/* ── TERMINAL FOOTER ── */}
+      <div className="px-4 pb-4 pt-3" style={{ borderTop: '1px solid rgba(0,240,255,0.08)' }}>
+        <div className="rounded-xl p-3 flex items-center justify-between" style={{
+          background: 'linear-gradient(135deg, rgba(0,20,40,0.7) 0%, rgba(0,8,20,0.9) 100%)',
+          border: '1px solid rgba(0,240,255,0.15)',
+        }}>
+          <div className="flex flex-col">
+            <div className="flex items-center gap-1.5 mb-0.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_6px_#00ff9d]" />
+              <span className="font-mono text-[9px] text-emerald-400 font-bold tracking-widest">NODE ONLINE</span>
+            </div>
+            <span className="font-hud text-[11px] text-white font-black tracking-wider">TERMINAL-T01</span>
+            <span className="font-mono text-[8px] text-slate-600 mt-0.5">SN: PF-{String(2099).padStart(4,'0')}-0001</span>
+          </div>
+          <div className="w-9 h-9 rounded-xl flex items-center justify-center text-cyan-400" style={{
+            background: 'rgba(0,240,255,0.08)',
+            border: '1px solid rgba(0,240,255,0.25)',
+            boxShadow: '0 0 12px rgba(0,240,255,0.15)',
+          }}>
+            <span className="material-symbols-outlined text-[18px] animate-pulse-subtle">sensors</span>
+          </div>
         </div>
       </div>
     </aside>

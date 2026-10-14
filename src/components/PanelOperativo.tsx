@@ -1,29 +1,177 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParking } from '../context/ParkingContext.tsx';
 import { ParkingCell, VehicleType } from '../types/parking.ts';
 
+/* ── Mini animated ring chart ── */
+const RingChart: React.FC<{ percent: number; color: string; size?: number }> = ({ percent, color, size = 64 }) => {
+  const r = (size / 2) - 6;
+  const circ = 2 * Math.PI * r;
+  const offset = circ - (percent / 100) * circ;
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="rotate-[-90deg]">
+      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="5" />
+      <circle
+        cx={size/2} cy={size/2} r={r} fill="none"
+        stroke={color} strokeWidth="5"
+        strokeDasharray={circ} strokeDashoffset={offset}
+        strokeLinecap="round"
+        style={{ filter: `drop-shadow(0 0 6px ${color})`, transition: 'stroke-dashoffset 0.7s ease-out' }}
+      />
+    </svg>
+  );
+};
+
+/* ── Cell card ── */
+const CellCard: React.FC<{ cell: ParkingCell; onClick: () => void }> = ({ cell, onClick }) => {
+  const isFree = cell.status === 'free';
+  const isOcc = cell.status === 'occupied';
+  const isBlk = cell.status === 'blocked';
+
+  if (isBlk) return (
+    <button onClick={onClick} className="cell-card group relative rounded-xl overflow-hidden cursor-pointer text-left w-full" style={{
+      background: 'linear-gradient(160deg, rgba(40,25,0,0.8) 0%, rgba(15,10,0,0.9) 100%)',
+      border: '1px solid rgba(255,183,3,0.3)',
+      minHeight: '110px',
+    }}>
+      <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-amber-400/40 to-transparent" />
+      <div className="p-3 flex flex-col h-full">
+        <div className="flex items-center justify-between">
+          <span className="font-hud text-[11px] font-bold text-amber-300">{cell.id}</span>
+          <span className="material-symbols-outlined text-amber-500 text-[14px]">lock</span>
+        </div>
+        <div className="flex-1 flex flex-col items-center justify-center">
+          <span className="material-symbols-outlined text-amber-400 text-[22px] group-hover:rotate-12 transition-transform">construction</span>
+          <span className="font-mono text-[8px] text-amber-400/80 font-bold mt-1 text-center">
+            {cell.maintenanceReason || 'MANT.'}
+          </span>
+        </div>
+      </div>
+    </button>
+  );
+
+  if (isOcc) return (
+    <button onClick={onClick} className="cell-card group relative rounded-xl overflow-hidden cursor-pointer text-left w-full" style={{
+      background: 'linear-gradient(160deg, rgba(50,0,20,0.85) 0%, rgba(15,0,8,0.95) 100%)',
+      border: '1px solid rgba(255,42,109,0.35)',
+      boxShadow: '0 0 15px rgba(255,42,109,0.12)',
+      minHeight: '110px',
+    }}>
+      <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-rose-500/50 to-transparent" />
+      <div className="absolute inset-0 group-hover:opacity-100 opacity-0 transition-opacity" style={{
+        background: 'linear-gradient(160deg, rgba(80,0,30,0.4) 0%, transparent 60%)',
+      }} />
+      <div className="p-3 flex flex-col h-full gap-1.5">
+        <div className="flex items-center justify-between">
+          <span className="font-hud text-[10px] font-bold text-rose-300">{cell.id}</span>
+          <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" style={{ boxShadow: '0 0 8px rgba(255,42,109,0.8)' }} />
+        </div>
+        <div className="flex-1 flex flex-col justify-center">
+          <div className="px-2 py-1 rounded-lg text-center" style={{
+            background: 'rgba(0,0,0,0.5)',
+            border: '1px solid rgba(255,42,109,0.3)',
+          }}>
+            <span className="font-label-plate text-[13px] text-yellow-300 font-black tracking-widest block">{cell.plate}</span>
+          </div>
+          <span className="text-[9px] font-mono text-slate-500 text-center mt-1">In: {cell.entryTime}</span>
+        </div>
+        <div className="flex items-center justify-between font-mono text-[9px] text-rose-400 font-bold pt-1" style={{ borderTop: '1px solid rgba(255,42,109,0.15)' }}>
+          <span className="flex items-center gap-0.5">
+            <span className="material-symbols-outlined text-[11px]">timer</span>
+            {cell.duration}
+          </span>
+          <span>${cell.currentTotal?.toLocaleString('es-CO') || '0'}</span>
+        </div>
+      </div>
+    </button>
+  );
+
+  return (
+    <button onClick={onClick} className="cell-card group relative rounded-xl overflow-hidden cursor-pointer text-left w-full" style={{
+      background: 'linear-gradient(160deg, rgba(0,20,10,0.6) 0%, rgba(0,5,15,0.8) 100%)',
+      border: '1px solid rgba(0,255,157,0.2)',
+      minHeight: '110px',
+    }}>
+      <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-emerald-500/30 to-transparent" />
+      <div className="absolute inset-0 group-hover:opacity-100 opacity-0 transition-opacity" style={{
+        background: 'linear-gradient(160deg, rgba(0,40,20,0.3) 0%, transparent 60%)',
+      }} />
+      <div className="p-3 flex flex-col h-full">
+        <div className="flex items-center justify-between">
+          <span className="font-hud text-[10px] font-bold text-emerald-300 group-hover:text-cyan-300 transition-colors">{cell.id}</span>
+          <span className="w-2 h-2 rounded-full bg-emerald-400" style={{ boxShadow: '0 0 6px rgba(0,255,157,0.7)' }} />
+        </div>
+        <div className="flex-1 flex flex-col items-center justify-center gap-1">
+          <span className="material-symbols-outlined text-emerald-400 group-hover:text-cyan-300 text-[24px] group-hover:scale-110 transition-all">
+            add_circle
+          </span>
+          <span className="font-hud text-[9px] text-emerald-400 group-hover:text-cyan-300 font-bold tracking-wider transition-colors">LIBRE</span>
+        </div>
+        <div className="text-center font-mono text-[8px] text-slate-600 group-hover:text-cyan-500 transition-colors">ASIGNAR</div>
+      </div>
+    </button>
+  );
+};
+
+/* ── KPI Card ── */
+const KpiCard: React.FC<{
+  label: string; value: string | number; sub?: string;
+  icon: string; accent?: string; ring?: number; ringColor?: string;
+}> = ({ label, value, sub, icon, accent = 'cyan', ring, ringColor = '#00f0ff' }) => {
+  const accentStyles: Record<string, { text: string; icon: string; border: string; glow: string }> = {
+    cyan:    { text: 'text-cyan-300',    icon: 'text-cyan-400',    border: 'rgba(0,240,255,0.2)',    glow: 'rgba(0,240,255,0.08)' },
+    emerald: { text: 'text-emerald-300', icon: 'text-emerald-400', border: 'rgba(0,255,157,0.2)',    glow: 'rgba(0,255,157,0.06)' },
+    violet:  { text: 'text-violet-300',  icon: 'text-violet-400',  border: 'rgba(139,92,246,0.2)',   glow: 'rgba(139,92,246,0.06)' },
+    amber:   { text: 'text-amber-300',   icon: 'text-amber-400',   border: 'rgba(255,183,3,0.2)',    glow: 'rgba(255,183,3,0.06)' },
+    red:     { text: 'text-red-300',     icon: 'text-red-400',     border: 'rgba(255,42,109,0.25)',  glow: 'rgba(255,42,109,0.08)' },
+  };
+  const s = accentStyles[accent] || accentStyles.cyan;
+
+  return (
+    <div className="relative rounded-2xl overflow-hidden hud-corners" style={{
+      background: 'linear-gradient(160deg, rgba(6,12,32,0.9) 0%, rgba(2,5,16,0.95) 100%)',
+      border: `1px solid ${s.border}`,
+      boxShadow: `0 0 20px ${s.glow}`,
+    }}>
+      <div className="absolute top-0 left-0 right-0 h-px" style={{ background: `linear-gradient(90deg, transparent, ${s.border.replace('0.2', '0.5')}, transparent)` }} />
+      <div className="p-4.5 flex flex-col gap-3">
+        <div className="flex items-start justify-between">
+          <div className="flex flex-col gap-1">
+            <span className={`font-mono text-[9px] font-bold tracking-widest ${s.icon} uppercase`}>{label}</span>
+            <span className={`font-hud text-3xl font-black leading-none ${s.text}`} style={{
+              textShadow: `0 0 20px ${ringColor}60`,
+            }}>{value}</span>
+            {sub && <span className="font-mono text-[10px] text-slate-500 mt-1">{sub}</span>}
+          </div>
+          <div className="shrink-0">
+            {ring !== undefined ? (
+              <div className="relative flex items-center justify-center">
+                <RingChart percent={ring} color={ringColor} size={52} />
+                <span className={`absolute font-mono text-[9px] font-bold ${s.icon}`}>{ring}%</span>
+              </div>
+            ) : (
+              <div className={`w-11 h-11 rounded-xl flex items-center justify-center ${s.icon}`} style={{
+                background: `${s.border.replace('0.2', '0.08')}`,
+                border: `1px solid ${s.border}`,
+                boxShadow: `0 0 12px ${s.glow}`,
+              }}>
+                <span className="material-symbols-outlined text-[22px]">{icon}</span>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/* ── Main Component ── */
 export const PanelOperativo: React.FC = () => {
   const {
-    cells,
-    movements,
-    totalOccupied,
-    totalCapacity,
-    occupancyPercent,
-    freeCarsCount,
-    occupiedCarsCount,
-    freeMotosCount,
-    occupiedMotosCount,
-    todayRevenue,
-    todayEntriesCount,
-    setActiveView,
-    setSelectedCellForModal,
-    registerEntry,
-    showToast,
-    thresholdSettings,
-    isCapacityCritical,
-    isCapacityWarning,
-    isAlertDismissed,
-    dismissAlert,
+    cells, movements, totalOccupied, totalCapacity, occupancyPercent,
+    freeCarsCount, occupiedCarsCount, freeMotosCount, occupiedMotosCount,
+    todayRevenue, todayEntriesCount, setActiveView, setSelectedCellForModal,
+    registerEntry, showToast, thresholdSettings, isCapacityCritical,
+    isCapacityWarning, isAlertDismissed, dismissAlert,
   } = useParking();
 
   const [activeFilter, setActiveFilter] = useState<'all' | 'free' | 'occupied' | 'blocked'>('all');
@@ -32,8 +180,8 @@ export const PanelOperativo: React.FC = () => {
   const [quickVehicleType, setQuickVehicleType] = useState<VehicleType>('Carro');
   const [quickTargetSlot, setQuickTargetSlot] = useState('A-02');
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [scanActive, setScanActive] = useState(false);
 
-  // Filtered cells
   const filterCell = (cell: ParkingCell) => {
     if (activeFilter === 'all') return true;
     return cell.status === activeFilter;
@@ -41,27 +189,19 @@ export const PanelOperativo: React.FC = () => {
 
   const carsCells = cells.filter((c) => c.zone === 'Zona A').filter(filterCell);
   const motosCells = cells.filter((c) => c.zone === 'Zona B').filter(filterCell);
-
   const freeSlots = cells.filter((c) => c.status === 'free');
 
   const handleRefresh = () => {
     setIsRefreshing(true);
-    setTimeout(() => {
-      setIsRefreshing(false);
-      showToast('Sensores de bahía sincronizados con la estación central', 'info');
-    }, 500);
+    setScanActive(true);
+    setTimeout(() => { setIsRefreshing(false); setScanActive(false); showToast('Telemetría cuántica sincronizada', 'info'); }, 900);
   };
 
   const handleQuickEntrySubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!quickPlate || quickPlate.length < 3) {
-      showToast('Ingrese un número de placa válido', 'warning');
-      return;
-    }
+    if (!quickPlate || quickPlate.length < 3) { showToast('Ingrese un número de placa válido', 'warning'); return; }
     const res = registerEntry(quickPlate, quickVehicleType, quickTargetSlot);
-    if (res.success) {
-      setQuickPlate('');
-    }
+    if (res.success) { setQuickPlate(''); }
   };
 
   const handleCellClick = (cell: ParkingCell) => {
@@ -70,673 +210,456 @@ export const PanelOperativo: React.FC = () => {
     } else if (cell.status === 'free') {
       setQuickTargetSlot(cell.id);
       setQuickVehicleType(cell.category);
-      showToast(`Celda ${cell.id} seleccionada para nuevo registro`, 'info');
-      // Focus quick plate
-      const el = document.getElementById('quick-plate-input');
-      if (el) el.focus();
+      showToast(`Bahía ${cell.id} seleccionada`, 'info');
+      document.getElementById('qp-input')?.focus();
     } else {
-      showToast(`Celda ${cell.id} inhabilitada: ${cell.maintenanceReason || 'En mantenimiento'}`, 'warning');
+      showToast(`Bahía ${cell.id}: ${cell.maintenanceReason || 'En mantenimiento'}`, 'warning');
     }
   };
 
   return (
-    <div className="p-6 flex flex-col gap-6 max-w-[1600px] mx-auto w-full">
-      {/* Visual Alert Banner when Critical Capacity is reached (e.g. 90%) */}
+    <div className="p-5 flex flex-col gap-5 max-w-[1800px] mx-auto w-full">
+
+      {/* ── CRITICAL ALERT BANNER ── */}
       {isCapacityCritical && thresholdSettings.enableVisualAlert && !isAlertDismissed && (
-        <div className="bg-red-50 border-2 border-red-500 p-4.5 rounded-2xl shadow-md flex flex-col md:flex-row md:items-center justify-between gap-4 animate-in fade-in slide-in-from-top-3 duration-300">
-          <div className="flex items-start md:items-center gap-3.5">
-            <div className="w-12 h-12 rounded-xl bg-red-600 text-white flex items-center justify-center shrink-0 shadow-sm animate-pulse">
-              <span className="material-symbols-outlined text-[28px]">notification_important</span>
+        <div className="relative rounded-2xl overflow-hidden p-4 flex flex-col md:flex-row md:items-center justify-between gap-4" style={{
+          background: 'linear-gradient(135deg, rgba(60,0,20,0.9) 0%, rgba(30,0,10,0.95) 100%)',
+          border: '2px solid rgba(255,42,109,0.6)',
+          boxShadow: '0 0 40px rgba(255,42,109,0.3), inset 0 0 40px rgba(255,42,109,0.05)',
+          animation: 'neon-border-pulse 1.5s ease-in-out infinite',
+        }}>
+          <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-rose-500/60 to-transparent" />
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0 animate-pulse" style={{
+              background: 'rgba(255,42,109,0.2)',
+              border: '1px solid rgba(255,42,109,0.5)',
+              boxShadow: '0 0 20px rgba(255,42,109,0.5)',
+            }}>
+              <span className="material-symbols-outlined text-[28px] text-red-400">warning</span>
             </div>
-            <div className="flex flex-col">
+            <div>
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="font-sans font-bold text-red-800 text-[16px] tracking-tight">
-                  ALERTA DE AFORO MÁXIMO: {occupancyPercent}% DE CAPACIDAD ALCANZADA
-                </span>
-                <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-red-600 text-white font-label-code">
-                  Umbral: {thresholdSettings.criticalThreshold}%
-                </span>
+                <span className="font-hud text-[14px] font-black text-red-200 tracking-wider">LOCKDOWN ALARM // AFORO {occupancyPercent}%</span>
+                <span className="cyber-tag text-red-400 border-red-400/40 bg-red-500/15">UMBRAL: {thresholdSettings.criticalThreshold}%</span>
               </div>
-              <p className="text-[13px] text-red-950 mt-1">
-                El parqueadero tiene <strong>{totalOccupied} de {totalCapacity} bahías ocupadas</strong> (quedan únicamente <strong>{totalCapacity - totalOccupied} libres</strong>).
-                {thresholdSettings.enableSoundAlert ? ' Notificación sonora activa.' : ''} Considere activar desvío vehicular en taquilla.
+              <p className="text-[11px] text-red-300/80 mt-1 font-mono">
+                {totalOccupied} de {totalCapacity} bahías ocupadas — {totalCapacity - totalOccupied} libres restantes
               </p>
             </div>
           </div>
-
-          <div className="flex items-center gap-2.5 shrink-0">
-            <button
-              type="button"
-              onClick={dismissAlert}
-              className="px-3.5 py-2 bg-white hover:bg-red-50 text-red-900 border border-red-300 font-semibold text-xs rounded-xl shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer"
-              title="Silenciar alarma temporalmente"
-            >
-              <span className="material-symbols-outlined text-[16px]">volume_off</span>
-              <span>Silenciar Alerta</span>
+          <div className="flex items-center gap-2 shrink-0">
+            <button onClick={dismissAlert} type="button" className="px-3.5 py-2 rounded-xl font-mono text-xs text-red-300 transition-all flex items-center gap-1.5" style={{
+              background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(255,42,109,0.3)',
+            }}>
+              <span className="material-symbols-outlined text-[16px]">volume_off</span> Silenciar
             </button>
-            <button
-              type="button"
-              onClick={() => setActiveView('tarifas-y-celdas')}
-              className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-bold text-xs rounded-xl shadow-sm transition-colors flex items-center gap-1.5 cursor-pointer"
-            >
-              <span className="material-symbols-outlined text-[16px]">tune</span>
-              <span>Configurar Umbrales</span>
+            <button onClick={() => setActiveView('tarifas-y-celdas')} type="button" className="px-4 py-2 rounded-xl font-hud text-xs font-black text-white transition-all flex items-center gap-1.5" style={{
+              background: 'linear-gradient(135deg, rgba(255,42,109,0.8), rgba(200,0,60,0.9))',
+              boxShadow: '0 0 20px rgba(255,42,109,0.5)',
+            }}>
+              <span className="material-symbols-outlined text-[16px]">tune</span> Ajustar Umbrales
             </button>
           </div>
         </div>
       )}
 
-      {/* Top Header Controls */}
-      <header className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-surface-card p-4 rounded-xl border border-surface-border shadow-sm">
+      {/* ── COMMAND HEADER ── */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 rounded-2xl p-4" style={{
+        background: 'linear-gradient(160deg, rgba(6,12,32,0.9) 0%, rgba(2,5,16,0.95) 100%)',
+        border: '1px solid rgba(0,240,255,0.18)',
+        boxShadow: '0 0 20px rgba(0,240,255,0.06)',
+      }}>
         <div className="flex flex-col md:flex-row md:items-center gap-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-surface-container-high flex items-center justify-center text-primary">
-              <span className="material-symbols-outlined text-[24px]">grid_view</span>
+          <div className="flex items-center gap-3.5">
+            <div className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0 text-cyan-300" style={{
+              background: 'rgba(0,240,255,0.08)',
+              border: '1px solid rgba(0,240,255,0.25)',
+              boxShadow: '0 0 20px rgba(0,240,255,0.15)',
+            }}>
+              <span className="material-symbols-outlined text-[26px]">grid_view</span>
             </div>
             <div>
-              <h1 className="font-sans text-[20px] font-bold text-text-primary leading-tight">
-                Panel Operativo en Tiempo Real
-              </h1>
-              <p className="text-[12px] text-text-secondary">
-                Monitoreo continuo de bahías, tarifas activas y flujo vehicular
-              </p>
+              <div className="flex items-center gap-2.5">
+                <h1 className="font-hud text-[17px] font-black text-white tracking-wide">PANEL OPERATIVO</h1>
+                <span className="cyber-tag text-emerald-400 border-emerald-500/30 bg-emerald-500/8 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping inline-block" />EN VIVO
+                </span>
+              </div>
+              <p className="text-[10px] text-slate-500 font-mono mt-0.5">HUD Telemetría 3D · Monitoreo de bahías en tiempo real</p>
             </div>
           </div>
 
           {/* Level selector */}
-          <div className="flex items-center gap-1.5 bg-surface-canvas px-3 py-1.5 rounded-lg border border-surface-border shadow-sm">
-            <span className="material-symbols-outlined text-text-secondary text-[18px]">layers</span>
+          <div className="flex items-center gap-2 px-3 py-2 rounded-xl" style={{
+            background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(0,240,255,0.2)',
+          }}>
+            <span className="material-symbols-outlined text-cyan-400 text-[17px]">layers</span>
             <select
               value={selectedLevel}
-              onChange={(e) => {
-                setSelectedLevel(e.target.value);
-                showToast(`Vista cambiada a: ${e.target.options[e.target.selectedIndex].text}`, 'info');
-              }}
-              className="bg-transparent text-[13px] font-medium text-text-primary focus:outline-none cursor-pointer pr-1"
+              onChange={(e) => { setSelectedLevel(e.target.value); showToast(`Nivel: ${e.target.options[e.target.selectedIndex].text}`, 'info'); }}
+              className="bg-transparent font-mono text-[11px] font-semibold text-cyan-200 focus:outline-none cursor-pointer"
             >
-              <option value="lvl-1">Nivel 1 - Principal (50 celdas)</option>
-              <option value="lvl-2">Nivel 2 - Subsuelo Norte (40 celdas)</option>
-              <option value="lvl-vip">Nivel E - Zona VIP & Lavado (15 celdas)</option>
+              <option value="lvl-1" className="bg-slate-900">Nivel 1 – Principal (50)</option>
+              <option value="lvl-2" className="bg-slate-900">Nivel 2 – Subsuelo (40)</option>
+              <option value="lvl-vip" className="bg-slate-900">VIP – Zona Eléctrica</option>
             </select>
           </div>
         </div>
 
-        {/* Header Action Buttons */}
-        <div className="flex items-center flex-wrap gap-2.5">
-          <button
-            onClick={handleRefresh}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-surface-container-low text-primary hover:bg-surface-container text-[13px] font-semibold border border-surface-border transition-all"
-            type="button"
-          >
-            <span className={`material-symbols-outlined text-[18px] transition-transform duration-500 ${isRefreshing ? 'rotate-180' : ''}`}>
-              autorenew
-            </span>
-            <span className="hidden sm:inline">Actualizar</span>
+        {/* Action buttons */}
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <button onClick={handleRefresh} type="button" className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl font-mono text-xs font-semibold transition-all" style={{
+            background: 'rgba(0,240,255,0.06)', border: '1px solid rgba(0,240,255,0.2)',
+            color: isRefreshing ? '#00f0ff' : '#94a3b8',
+          }}>
+            <span className={`material-symbols-outlined text-[17px] transition-transform duration-500 ${isRefreshing ? 'rotate-180 text-cyan-400' : ''}`}>autorenew</span>
+            SINCRONIZAR
           </button>
-
-          <button
-            onClick={() => setActiveView('registro-de-entrada')}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-secondary text-white hover:bg-primary text-[13px] font-semibold shadow-sm hover:shadow transition-all active:scale-95"
-            type="button"
-          >
-            <span className="material-symbols-outlined text-[18px]">directions_car</span>
-            <span>Nuevo Ingreso</span>
-            <span className="text-[10px] bg-white/20 px-1.5 py-0.5 rounded ml-1 font-mono font-bold">F1</span>
+          <button onClick={() => setActiveView('registro-de-entrada')} type="button" className="btn-neon flex items-center gap-1.5 px-4 py-2.5 rounded-xl font-hud text-[11px] font-black text-slate-950 transition-all" style={{
+            background: 'linear-gradient(135deg, #00f0ff, #0080ff)',
+            boxShadow: '0 0 20px rgba(0,240,255,0.4)',
+          }}>
+            <span className="material-symbols-outlined text-[17px]">directions_car</span>
+            NUEVO INGRESO
+            <span className="font-mono text-[9px] px-1.5 py-0.5 rounded bg-black/25">F1</span>
           </button>
-
-          <button
-            onClick={() => setActiveView('salida-y-cobro')}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-status-available text-white hover:bg-emerald-600 text-[13px] font-semibold shadow-sm hover:shadow transition-all active:scale-95"
-            type="button"
-          >
-            <span className="material-symbols-outlined text-[18px]">point_of_sale</span>
-            <span>Registrar Salida</span>
-            <span className="text-[10px] bg-white/25 px-1.5 py-0.5 rounded ml-1 font-mono font-bold">F2</span>
+          <button onClick={() => setActiveView('salida-y-cobro')} type="button" className="btn-neon flex items-center gap-1.5 px-4 py-2.5 rounded-xl font-hud text-[11px] font-black text-slate-950 transition-all" style={{
+            background: 'linear-gradient(135deg, #00ff9d, #00c870)',
+            boxShadow: '0 0 20px rgba(0,255,157,0.4)',
+          }}>
+            <span className="material-symbols-outlined text-[17px]">point_of_sale</span>
+            COBRO Y SALIDA
+            <span className="font-mono text-[9px] px-1.5 py-0.5 rounded bg-black/25">F2</span>
           </button>
         </div>
-      </header>
+      </div>
 
-      {/* 4 KPIs & Aforo Metrics */}
-      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* KPI 1: Aforo General */}
-        <div className="bg-surface-card rounded-xl p-4 border border-surface-border shadow-sm flex flex-col justify-between">
-          <div className="flex items-start justify-between">
-            <div>
-              <span className="text-[11px] text-text-secondary uppercase tracking-wider font-semibold">
-                Aforo General
-              </span>
-              <div className="flex items-baseline gap-2 mt-1">
-                <span className="text-[28px] font-bold text-text-primary">{occupancyPercent}%</span>
-                <span className="text-[13px] text-text-secondary">{totalOccupied} / {totalCapacity}</span>
-              </div>
-            </div>
-            <div className="w-10 h-10 rounded-lg bg-status-occupied-bg text-status-occupied flex items-center justify-center">
-              <span className="material-symbols-outlined text-[22px]">pie_chart</span>
-            </div>
-          </div>
-          <div className="mt-3">
-            <div className="flex justify-between items-center text-[12px] mb-1.5 text-text-secondary">
-              <span>{totalCapacity - totalOccupied} celdas libres</span>
-              <span className="font-label-code font-bold text-status-available">
-                {100 - occupancyPercent}% libre
-              </span>
-            </div>
-            <div className="w-full bg-surface-container-high h-2.5 rounded-full overflow-hidden">
-              <div
-                className="bg-secondary h-full rounded-full transition-all duration-700"
-                style={{ width: `${occupancyPercent}%` }}
-              ></div>
-            </div>
-          </div>
-        </div>
+      {/* ── KPI CARDS ── */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <KpiCard
+          label="AFORO GENERAL // TELEMETRÍA"
+          value={`${occupancyPercent}%`}
+          sub={`${totalOccupied} de ${totalCapacity} bahías`}
+          icon="donut_large"
+          accent={isCapacityCritical ? 'red' : isCapacityWarning ? 'amber' : 'cyan'}
+          ring={occupancyPercent}
+          ringColor={isCapacityCritical ? '#ff2a6d' : isCapacityWarning ? '#ffb703' : '#00f0ff'}
+        />
+        <KpiCard
+          label="ZONA A // CARROS"
+          value={occupiedCarsCount}
+          sub={`${freeCarsCount} bahías libres`}
+          icon="directions_car"
+          accent="cyan"
+          ring={Math.round((occupiedCarsCount / 30) * 100)}
+          ringColor="#00f0ff"
+        />
+        <KpiCard
+          label="ZONA B // MOTOS"
+          value={occupiedMotosCount}
+          sub={`${freeMotosCount} bahías libres`}
+          icon="two_wheeler"
+          accent="violet"
+          ring={Math.round((occupiedMotosCount / 20) * 100)}
+          ringColor="#8b5cf6"
+        />
+        <KpiCard
+          label="RECAUDO TURNO // COP"
+          value={`$${todayRevenue.toLocaleString('es-CO')}`}
+          sub={`${todayEntriesCount} ingresos hoy`}
+          icon="payments"
+          accent="emerald"
+        />
+      </div>
 
-        {/* KPI 2: Carros */}
-        <div className="bg-surface-card rounded-xl p-4 border border-surface-border shadow-sm flex flex-col justify-between">
-          <div className="flex items-start justify-between">
-            <div>
-              <div className="flex items-center gap-1.5">
-                <span className="material-symbols-outlined text-[18px] text-secondary">directions_car</span>
-                <span className="text-[11px] text-text-secondary font-semibold uppercase tracking-wider">Carros</span>
-              </div>
-              <div className="flex items-baseline gap-2 mt-1">
-                <span className="text-[28px] font-bold text-text-primary">
-                  {occupiedCarsCount}
-                  <span className="text-text-secondary text-[16px] font-normal">/30</span>
-                </span>
-                <span className="text-[11px] px-2 py-0.5 rounded-full bg-status-available-bg text-status-available font-bold">
-                  {freeCarsCount} Libres
-                </span>
-              </div>
-            </div>
-            <span className="font-label-code text-[11px] bg-surface-container-high text-primary font-bold px-2 py-1 rounded">
-              $4.500/h
-            </span>
-          </div>
-          <div className="mt-2 pt-1 flex items-center justify-between text-text-secondary text-[12px]">
-            <span>Ocupación {Math.round((occupiedCarsCount / 30) * 100)}%</span>
-            <div className="w-24 bg-surface-container-high h-1.5 rounded-full overflow-hidden">
-              <div
-                className="bg-secondary h-full rounded-full"
-                style={{ width: `${(occupiedCarsCount / 30) * 100}%` }}
-              ></div>
-            </div>
-          </div>
-        </div>
+      {/* ── MAIN WORKSPACE ── */}
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-5 items-start">
 
-        {/* KPI 3: Motos */}
-        <div className="bg-surface-card rounded-xl p-4 border border-surface-border shadow-sm flex flex-col justify-between">
-          <div className="flex items-start justify-between">
-            <div>
-              <div className="flex items-center gap-1.5">
-                <span className="material-symbols-outlined text-[18px] text-primary">two_wheeler</span>
-                <span className="text-[11px] text-text-secondary font-semibold uppercase tracking-wider">Motos</span>
-              </div>
-              <div className="flex items-baseline gap-2 mt-1">
-                <span className="text-[28px] font-bold text-text-primary">
-                  {occupiedMotosCount}
-                  <span className="text-text-secondary text-[16px] font-normal">/20</span>
-                </span>
-                <span className="text-[11px] px-2 py-0.5 rounded-full bg-status-available-bg text-status-available font-bold">
-                  {freeMotosCount} Libres
-                </span>
-              </div>
-            </div>
-            <span className="font-label-code text-[11px] bg-surface-container-high text-primary font-bold px-2 py-1 rounded">
-              $2.200/h
-            </span>
-          </div>
-          <div className="mt-2 pt-1 flex items-center justify-between text-text-secondary text-[12px]">
-            <span>Ocupación {Math.round((occupiedMotosCount / 20) * 100)}%</span>
-            <div className="w-24 bg-surface-container-high h-1.5 rounded-full overflow-hidden">
-              <div
-                className="bg-primary h-full rounded-full"
-                style={{ width: `${(occupiedMotosCount / 20) * 100}%` }}
-              ></div>
-            </div>
-          </div>
-        </div>
+        {/* ── LEFT: BAY GRID ── */}
+        <div className="xl:col-span-8 flex flex-col gap-4">
 
-        {/* KPI 4: Recaudo Turno Hoy */}
-        <div className="bg-surface-card rounded-xl p-4 border border-surface-border shadow-sm flex flex-col justify-between">
-          <div className="flex items-start justify-between">
-            <div>
-              <span className="text-[11px] text-text-secondary font-semibold uppercase tracking-wider">
-                Recaudo Turno Hoy
-              </span>
-              <div className="text-[24px] font-bold text-primary mt-1">
-                ${todayRevenue.toLocaleString('es-CO')}{' '}
-                <span className="text-[12px] text-text-secondary font-normal">COP</span>
-              </div>
-            </div>
-            <div className="w-10 h-10 rounded-lg bg-surface-container-high text-primary flex items-center justify-center">
-              <span className="material-symbols-outlined text-[22px]">payments</span>
-            </div>
-          </div>
-          <div className="mt-2 flex items-center gap-3 font-label-code text-[12px] text-text-secondary">
-            <div className="flex items-center gap-1">
-              <span className="material-symbols-outlined text-[16px] text-status-available">check_circle</span>
-              <span>{todayEntriesCount} ingresos</span>
-            </div>
-            <span>•</span>
-            <div className="flex items-center gap-1">
-              <span className="material-symbols-outlined text-[16px] text-secondary">pace</span>
-              <span>Prom. 1h 45m</span>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Main Workspace Layout (8 cols Grid / 4 cols Actions) */}
-      <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
-        {/* Left Column: Bays Grid Matrix (8 cols) */}
-        <div className="xl:col-span-8 flex flex-col gap-5">
-          {/* Visual Filters Bar */}
-          <div className="bg-surface-card p-4 rounded-xl border border-surface-border shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div className="flex items-center gap-2 w-full sm:w-auto">
-              <span className="text-[12px] text-text-secondary uppercase tracking-wider font-semibold mr-1 hidden md:inline">
-                Filtrar:
-              </span>
-              <div className="inline-flex p-1 bg-surface-canvas rounded-lg border border-surface-border">
+          {/* Filter bar */}
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-3.5 rounded-2xl" style={{
+            background: 'rgba(3,6,18,0.9)', border: '1px solid rgba(0,240,255,0.12)',
+          }}>
+            <div className="flex items-center gap-2">
+              <span className="font-mono text-[10px] text-cyan-400/60 font-bold tracking-wider hidden md:inline">FILTRO:</span>
+              <div className="inline-flex p-1 rounded-xl gap-1" style={{ background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(0,240,255,0.1)' }}>
                 {[
-                  { id: 'all', label: `Todas (${totalCapacity})` },
-                  { id: 'free', label: `Libres (${totalCapacity - totalOccupied - 2})` },
+                  { id: 'all',      label: `Todas (${totalCapacity})` },
+                  { id: 'free',     label: `Libres (${totalCapacity - totalOccupied - 2})` },
                   { id: 'occupied', label: `Ocupadas (${totalOccupied})` },
-                  { id: 'blocked', label: 'Bloqueadas (2)' },
+                  { id: 'blocked',  label: 'Mant. (2)' },
                 ].map((tab) => (
                   <button
                     key={tab.id}
                     onClick={() => setActiveFilter(tab.id as any)}
-                    className={`px-3 py-1.5 rounded-md text-[13px] transition-all ${
+                    className={`px-3 py-1.5 rounded-lg font-mono text-[11px] transition-all ${
                       activeFilter === tab.id
-                        ? 'bg-surface-card text-primary shadow-sm font-semibold'
-                        : 'text-text-secondary hover:text-text-primary'
+                        ? 'text-slate-950 font-bold'
+                        : 'text-slate-400 hover:text-slate-200'
                     }`}
+                    style={activeFilter === tab.id ? {
+                      background: 'linear-gradient(135deg, #00f0ff, #0080ff)',
+                      boxShadow: '0 0 12px rgba(0,240,255,0.4)',
+                    } : {}}
                   >
                     {tab.label}
                   </button>
                 ))}
               </div>
             </div>
-
-            {/* Quick Status Legend */}
-            <div className="flex items-center gap-4 flex-wrap text-text-secondary text-[12px]">
-              <div className="flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-status-available"></span>
-                <span>Libre</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-status-occupied"></span>
-                <span>Ocupado</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-status-warning"></span>
-                <span>Mantenimiento</span>
-              </div>
+            <div className="flex items-center gap-4 font-mono text-[10px] text-slate-500">
+              {[
+                { color: '#00ff9d', label: 'Libre' },
+                { color: '#ff2a6d', label: 'Ocupada' },
+                { color: '#ffb703', label: 'Mantenimiento' },
+              ].map(({ color, label }) => (
+                <div key={label} className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full shrink-0" style={{ background: color, boxShadow: `0 0 6px ${color}` }} />
+                  {label}
+                </div>
+              ))}
             </div>
           </div>
 
-          {/* SECTION A: CARROS (Tarjetas de Celdas) */}
-          <div className="bg-surface-card p-4 rounded-xl border border-surface-border shadow-sm flex flex-col gap-4">
-            <div className="flex items-center justify-between pb-1 border-b border-surface-border/50">
-              <div className="flex items-center gap-2">
-                <div className="p-1.5 rounded bg-surface-container text-secondary">
+          {/* Zone A - Cars */}
+          <div className="rounded-2xl overflow-hidden" style={{
+            background: 'linear-gradient(160deg, rgba(6,12,32,0.92) 0%, rgba(2,5,16,0.96) 100%)',
+            border: '1px solid rgba(0,240,255,0.18)',
+          }}>
+            <div className="relative p-4 flex items-center justify-between" style={{
+              borderBottom: '1px solid rgba(0,240,255,0.1)',
+            }}>
+              {/* Scan line effect */}
+              {scanActive && (
+                <div className="absolute left-0 right-0 h-px bg-gradient-to-r from-transparent via-cyan-400/60 to-transparent animate-laser pointer-events-none" />
+              )}
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-lg flex items-center justify-center text-cyan-300" style={{
+                  background: 'rgba(0,240,255,0.1)', border: '1px solid rgba(0,240,255,0.3)',
+                  boxShadow: '0 0 12px rgba(0,240,255,0.15)',
+                }}>
                   <span className="material-symbols-outlined text-[20px]">directions_car</span>
                 </div>
-                <h2 className="font-sans text-[16px] font-bold text-text-primary">
-                  Zona A • Carros y Camionetas
-                </h2>
-                <span className="font-label-code text-[12px] text-text-secondary">30 celdas</span>
+                <div>
+                  <h2 className="font-hud text-[13px] font-bold text-white tracking-wider">ZONA A // CARROS Y CAMIONETAS</h2>
+                  <span className="font-mono text-[9px] text-cyan-400/70">30 BAHÍAS · A-01 AL A-30</span>
+                </div>
               </div>
-              <span className="font-label-code text-[11px] text-on-surface-variant bg-surface-canvas px-2 py-0.5 rounded border border-surface-border">
-                Rango A-01 a A-30
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="cyber-tag text-emerald-400 border-emerald-500/30">{freeCarsCount} LIBRES</span>
+                <span className="cyber-tag text-rose-400 border-rose-500/30">{occupiedCarsCount} OCUPADAS</span>
+              </div>
             </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-              {carsCells.map((cell) => {
-                if (cell.status === 'blocked') {
-                  return (
-                    <div
-                      key={cell.id}
-                      onClick={() => handleCellClick(cell)}
-                      className="bg-status-warning-bg/60 border border-status-warning/30 p-3 rounded-xl shadow-sm cursor-pointer flex flex-col justify-between min-h-[115px] hover:border-status-warning transition-all"
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="font-label-code text-[13px] font-bold text-text-primary">{cell.id}</span>
-                        <span className="material-symbols-outlined text-status-warning text-[18px]">lock</span>
-                      </div>
-                      <div className="flex flex-col items-center justify-center my-auto text-center">
-                        <span className="material-symbols-outlined text-status-warning text-[20px]">construction</span>
-                        <span className="text-[10px] text-status-warning font-bold mt-1 tracking-tight uppercase">
-                          {cell.maintenanceReason || 'MANTENIMIENTO'}
-                        </span>
-                      </div>
-                      <span className="text-center font-label-code text-[10px] text-text-secondary">Inhabilitada</span>
-                    </div>
-                  );
-                }
-
-                if (cell.status === 'occupied') {
-                  return (
-                    <div
-                      key={cell.id}
-                      onClick={() => handleCellClick(cell)}
-                      className="group bg-status-occupied-bg/40 hover:bg-status-occupied-bg border border-status-occupied/20 p-3 rounded-xl shadow-sm hover:shadow-md transition-all cursor-pointer flex flex-col justify-between min-h-[115px]"
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="font-label-code text-[13px] font-bold text-text-primary">{cell.id}</span>
-                        <span className="w-2 h-2 rounded-full bg-status-occupied"></span>
-                      </div>
-                      <div className="my-1">
-                        <span className="font-label-plate text-[16px] text-text-primary tracking-wider block font-bold">
-                          {cell.plate}
-                        </span>
-                        <span className="text-[11px] text-text-secondary">Desde {cell.entryTime}</span>
-                      </div>
-                      <div className="flex items-center justify-between font-label-code text-[11px] text-status-occupied font-semibold">
-                        <span className="flex items-center gap-0.5">
-                          <span className="material-symbols-outlined text-[13px]">timer</span>
-                          {cell.duration}
-                        </span>
-                        <span>${cell.currentTotal?.toLocaleString('es-CO')}</span>
-                      </div>
-                    </div>
-                  );
-                }
-
-                // Free Cell
-                return (
-                  <div
-                    key={cell.id}
-                    onClick={() => handleCellClick(cell)}
-                    className="group bg-status-available-bg/30 hover:bg-status-available-bg border border-status-available/20 p-3 rounded-xl shadow-sm hover:shadow-md transition-all cursor-pointer flex flex-col justify-between min-h-[115px]"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="font-label-code text-[13px] font-bold text-text-primary">{cell.id}</span>
-                      <span className="w-2 h-2 rounded-full bg-status-available"></span>
-                    </div>
-                    <div className="flex flex-col items-center justify-center my-auto py-1">
-                      <span className="material-symbols-outlined text-status-available text-[24px] group-hover:scale-125 transition-transform">
-                        add_circle
-                      </span>
-                      <span className="text-[11px] text-status-available font-bold mt-1">DISPONIBLE</span>
-                    </div>
-                    <div className="text-center font-label-code text-[10px] text-text-secondary">
-                      Click para asignar
-                    </div>
-                  </div>
-                );
-              })}
+            <div className="p-4">
+              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2.5">
+                {carsCells.map((cell) => (
+                  <CellCard key={cell.id} cell={cell} onClick={() => handleCellClick(cell)} />
+                ))}
+              </div>
             </div>
           </div>
 
-          {/* SECTION B: MOTOS (Tarjetas de Celdas) */}
-          <div className="bg-surface-card p-4 rounded-xl border border-surface-border shadow-sm flex flex-col gap-4">
-            <div className="flex items-center justify-between pb-1 border-b border-surface-border/50">
-              <div className="flex items-center gap-2">
-                <div className="p-1.5 rounded bg-surface-container text-primary">
+          {/* Zone B - Motos */}
+          <div className="rounded-2xl overflow-hidden" style={{
+            background: 'linear-gradient(160deg, rgba(8,5,24,0.92) 0%, rgba(2,2,16,0.96) 100%)',
+            border: '1px solid rgba(139,92,246,0.2)',
+          }}>
+            <div className="p-4 flex items-center justify-between" style={{ borderBottom: '1px solid rgba(139,92,246,0.1)' }}>
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-lg flex items-center justify-center text-violet-300" style={{
+                  background: 'rgba(139,92,246,0.1)', border: '1px solid rgba(139,92,246,0.3)',
+                  boxShadow: '0 0 12px rgba(139,92,246,0.15)',
+                }}>
                   <span className="material-symbols-outlined text-[20px]">two_wheeler</span>
                 </div>
-                <h2 className="font-sans text-[16px] font-bold text-text-primary">
-                  Zona B • Motocicletas
-                </h2>
-                <span className="font-label-code text-[12px] text-text-secondary">20 celdas</span>
+                <div>
+                  <h2 className="font-hud text-[13px] font-bold text-white tracking-wider">ZONA B // MOTOCICLETAS</h2>
+                  <span className="font-mono text-[9px] text-violet-400/70">20 BAHÍAS · B-01 AL B-20</span>
+                </div>
               </div>
-              <span className="font-label-code text-[11px] text-on-surface-variant bg-surface-canvas px-2 py-0.5 rounded border border-surface-border">
-                Rango B-01 a B-20
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="cyber-tag text-emerald-400 border-emerald-500/30">{freeMotosCount} LIBRES</span>
+                <span className="cyber-tag text-rose-400 border-rose-500/30">{occupiedMotosCount} OCUPADAS</span>
+              </div>
             </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-              {motosCells.map((cell) => {
-                if (cell.status === 'blocked') {
-                  return (
-                    <div
-                      key={cell.id}
-                      onClick={() => handleCellClick(cell)}
-                      className="bg-status-warning-bg/60 border border-status-warning/30 p-3 rounded-xl shadow-sm cursor-pointer flex flex-col justify-between min-h-[115px]"
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="font-label-code text-[13px] font-bold text-text-primary">{cell.id}</span>
-                        <span className="material-symbols-outlined text-status-warning text-[18px]">lock</span>
-                      </div>
-                      <div className="flex flex-col items-center justify-center my-auto text-center">
-                        <span className="material-symbols-outlined text-status-warning text-[20px]">oil_barrel</span>
-                        <span className="text-[10px] text-status-warning font-bold mt-1 tracking-tight uppercase">
-                          {cell.maintenanceReason || 'LIMPIEZA'}
-                        </span>
-                      </div>
-                      <span className="text-center font-label-code text-[10px] text-text-secondary">Inhabilitada</span>
-                    </div>
-                  );
-                }
-
-                if (cell.status === 'occupied') {
-                  return (
-                    <div
-                      key={cell.id}
-                      onClick={() => handleCellClick(cell)}
-                      className="group bg-status-occupied-bg/40 hover:bg-status-occupied-bg border border-status-occupied/20 p-3 rounded-xl shadow-sm hover:shadow-md transition-all cursor-pointer flex flex-col justify-between min-h-[115px]"
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="font-label-code text-[13px] font-bold text-text-primary">{cell.id}</span>
-                        <span className="w-2 h-2 rounded-full bg-status-occupied"></span>
-                      </div>
-                      <div className="my-1">
-                        <span className="font-label-plate text-[16px] text-text-primary tracking-wider block font-bold">
-                          {cell.plate}
-                        </span>
-                        <span className="text-[11px] text-text-secondary">Desde {cell.entryTime}</span>
-                      </div>
-                      <div className="flex items-center justify-between font-label-code text-[11px] text-status-occupied font-semibold">
-                        <span className="flex items-center gap-0.5">
-                          <span className="material-symbols-outlined text-[13px]">timer</span>
-                          {cell.duration}
-                        </span>
-                        <span>${cell.currentTotal?.toLocaleString('es-CO')}</span>
-                      </div>
-                    </div>
-                  );
-                }
-
-                return (
-                  <div
-                    key={cell.id}
-                    onClick={() => handleCellClick(cell)}
-                    className="group bg-status-available-bg/30 hover:bg-status-available-bg border border-status-available/20 p-3 rounded-xl shadow-sm hover:shadow-md transition-all cursor-pointer flex flex-col justify-between min-h-[115px]"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="font-label-code text-[13px] font-bold text-text-primary">{cell.id}</span>
-                      <span className="w-2 h-2 rounded-full bg-status-available"></span>
-                    </div>
-                    <div className="flex flex-col items-center justify-center my-auto py-1">
-                      <span className="material-symbols-outlined text-status-available text-[24px] group-hover:scale-125 transition-transform">
-                        add_circle
-                      </span>
-                      <span className="text-[11px] text-status-available font-bold mt-1">DISPONIBLE</span>
-                    </div>
-                    <div className="text-center font-label-code text-[10px] text-text-secondary">
-                      Click para asignar
-                    </div>
-                  </div>
-                );
-              })}
+            <div className="p-4">
+              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2.5">
+                {motosCells.map((cell) => (
+                  <CellCard key={cell.id} cell={cell} onClick={() => handleCellClick(cell)} />
+                ))}
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Right Column: Fast Entry POS & Recent Movements (4 cols) */}
-        <div className="xl:col-span-4 flex flex-col gap-6">
-          {/* Tarjeta de Entrada Rápida Integrada */}
-          <div className="bg-surface-card p-4 rounded-xl border border-surface-border shadow-sm flex flex-col gap-3">
-            <div className="flex items-center justify-between pb-1 border-b border-surface-border/50">
-              <span className="text-[12px] uppercase tracking-wider text-text-secondary font-bold">
-                Ingreso Express
-              </span>
-              <span className="font-label-code text-[12px] text-secondary font-bold">
-                Lector QR/LPR Listo
-              </span>
-            </div>
+        {/* ── RIGHT: EXPRESS ENTRY + MOVEMENTS ── */}
+        <div className="xl:col-span-4 flex flex-col gap-4">
 
-            <form onSubmit={handleQuickEntrySubmit} className="flex flex-col gap-3 mt-1">
-              <div>
-                <label className="text-[12px] text-text-secondary block mb-1 font-medium" htmlFor="quick-plate-input">
-                  Número de Placa
-                </label>
-                <div className="relative">
-                  <input
-                    id="quick-plate-input"
-                    maxLength={7}
-                    placeholder="ABC-123"
-                    value={quickPlate}
-                    onChange={(e) => setQuickPlate(e.target.value.toUpperCase())}
-                    required
-                    type="text"
-                    className="w-full h-12 bg-surface-canvas rounded-lg px-4 font-label-plate text-[20px] text-center uppercase tracking-widest text-text-primary placeholder:text-outline-variant focus:bg-white focus:ring-2 focus:ring-secondary outline-none transition-all shadow-sm border border-surface-border"
-                  />
-                  <span className="material-symbols-outlined absolute right-3 top-3 text-text-secondary pointer-events-none text-[22px]">
-                    pin
-                  </span>
+          {/* Quick Entry Form */}
+          <div className="relative rounded-2xl overflow-hidden" style={{
+            background: 'linear-gradient(160deg, rgba(0,18,36,0.9) 0%, rgba(0,5,16,0.96) 100%)',
+            border: '1px solid rgba(0,240,255,0.25)',
+            boxShadow: '0 0 30px rgba(0,240,255,0.08)',
+          }}>
+            <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-cyan-500/50 to-transparent" />
+            <div className="absolute top-0 right-0 w-32 h-32 pointer-events-none" style={{
+              background: 'radial-gradient(circle at top right, rgba(0,240,255,0.08) 0%, transparent 70%)',
+            }} />
+
+            <div className="p-4 flex flex-col gap-3.5">
+              <div className="flex items-center justify-between pb-3" style={{ borderBottom: '1px solid rgba(0,240,255,0.12)' }}>
+                <div className="flex items-center gap-2">
+                  <span className="material-symbols-outlined text-cyan-400 text-[20px]">qr_code_scanner</span>
+                  <span className="font-hud text-[12px] font-bold text-cyan-200 tracking-wider">INGRESO EXPRESS</span>
                 </div>
+                <span className="cyber-tag text-emerald-400 border-emerald-500/30 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse inline-block" />LPR ON
+                </span>
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
-                <label
-                  className={`flex items-center justify-center gap-2 p-2.5 rounded-lg cursor-pointer transition-all border ${
-                    quickVehicleType === 'Carro'
-                      ? 'bg-primary-container text-on-primary-container font-semibold border-transparent shadow-sm'
-                      : 'bg-surface-canvas text-text-primary hover:bg-surface-container border-surface-border'
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name="quick-vehicle-type"
-                    value="Carro"
-                    checked={quickVehicleType === 'Carro'}
-                    onChange={() => setQuickVehicleType('Carro')}
-                    className="hidden"
-                  />
-                  <span className="material-symbols-outlined text-[18px]">directions_car</span>
-                  <span className="text-[13px]">Carro</span>
-                </label>
+              <form onSubmit={handleQuickEntrySubmit} className="flex flex-col gap-3">
+                {/* Plate input */}
+                <div>
+                  <label className="font-mono text-[10px] text-slate-400 block mb-1.5 font-semibold tracking-wider">MATRÍCULA DEL VEHÍCULO</label>
+                  <div className="relative">
+                    <input
+                      id="qp-input"
+                      maxLength={7}
+                      placeholder="ABC-123"
+                      value={quickPlate}
+                      onChange={(e) => setQuickPlate(e.target.value.toUpperCase())}
+                      required type="text"
+                      className="w-full rounded-xl px-4 py-3 font-label-plate text-[22px] text-center uppercase tracking-widest text-cyan-200 placeholder:text-slate-700 outline-none transition-all input-neon"
+                      style={{
+                        background: 'rgba(0,0,0,0.6)',
+                        border: '1px solid rgba(0,240,255,0.3)',
+                        boxShadow: '0 0 15px rgba(0,240,255,0.08)',
+                      }}
+                    />
+                    <span className="material-symbols-outlined absolute right-3.5 top-3.5 text-cyan-500/60 pointer-events-none text-[20px]">camera</span>
+                  </div>
+                </div>
 
-                <label
-                  className={`flex items-center justify-center gap-2 p-2.5 rounded-lg cursor-pointer transition-all border ${
-                    quickVehicleType === 'Moto'
-                      ? 'bg-primary-container text-on-primary-container font-semibold border-transparent shadow-sm'
-                      : 'bg-surface-canvas text-text-primary hover:bg-surface-container border-surface-border'
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name="quick-vehicle-type"
-                    value="Moto"
-                    checked={quickVehicleType === 'Moto'}
-                    onChange={() => setQuickVehicleType('Moto')}
-                    className="hidden"
-                  />
-                  <span className="material-symbols-outlined text-[18px]">two_wheeler</span>
-                  <span className="text-[13px]">Moto</span>
-                </label>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <select
-                  value={quickTargetSlot}
-                  onChange={(e) => setQuickTargetSlot(e.target.value)}
-                  className="w-1/2 h-10 bg-surface-canvas text-text-primary rounded-lg px-2 font-label-code text-[12px] outline-none border border-surface-border focus:ring-2 focus:ring-secondary"
-                >
-                  {freeSlots.slice(0, 10).map((slot) => (
-                    <option key={slot.id} value={slot.id}>
-                      Celda {slot.id} (Libre)
-                    </option>
+                {/* Vehicle type */}
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { val: 'Carro' as VehicleType, icon: 'directions_car', color: 'cyan' },
+                    { val: 'Moto' as VehicleType,  icon: 'two_wheeler',    color: 'violet' },
+                  ].map(({ val, icon, color }) => (
+                    <label key={val} className={`flex items-center justify-center gap-2 p-2.5 rounded-xl cursor-pointer transition-all border font-hud text-xs font-bold ${
+                      quickVehicleType === val
+                        ? color === 'cyan'
+                          ? 'bg-cyan-500/15 border-cyan-400/50 text-cyan-300 shadow-[0_0_12px_rgba(0,240,255,0.2)]'
+                          : 'bg-violet-500/15 border-violet-400/50 text-violet-300 shadow-[0_0_12px_rgba(139,92,246,0.2)]'
+                        : 'border-white/8 text-slate-500 hover:text-slate-300'
+                    }`} style={quickVehicleType === val ? {} : { background: 'rgba(255,255,255,0.03)' }}>
+                      <input type="radio" name="vt" value={val} checked={quickVehicleType === val} onChange={() => setQuickVehicleType(val)} className="hidden" />
+                      <span className="material-symbols-outlined text-[17px]">{icon}</span>
+                      {val}
+                    </label>
                   ))}
-                  {freeSlots.length === 0 && <option value="">Sin celdas libres</option>}
-                </select>
+                </div>
 
-                <button
-                  className="w-1/2 h-10 bg-secondary hover:bg-primary text-white rounded-lg text-[13px] font-semibold transition-all shadow flex items-center justify-center gap-1 cursor-pointer"
-                  type="submit"
-                >
-                  <span className="material-symbols-outlined text-[18px]">check</span>
-                  <span>Emitir Ticket</span>
-                </button>
-              </div>
-            </form>
+                {/* Slot + Submit */}
+                <div className="flex gap-2">
+                  <select
+                    value={quickTargetSlot}
+                    onChange={(e) => setQuickTargetSlot(e.target.value)}
+                    className="w-1/2 rounded-xl px-3 py-2.5 font-mono text-[11px] text-cyan-200 outline-none transition-all"
+                    style={{ background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(0,240,255,0.2)', color: '#a5f3fc' }}
+                  >
+                    {freeSlots.slice(0, 12).map((s) => (
+                      <option key={s.id} value={s.id} className="bg-slate-900">Celda {s.id}</option>
+                    ))}
+                    {freeSlots.length === 0 && <option value="">Sin celdas</option>}
+                  </select>
+                  <button type="submit" className="btn-neon w-1/2 py-2.5 rounded-xl font-hud text-[11px] font-black text-slate-950 flex items-center justify-center gap-1.5 transition-all" style={{
+                    background: 'linear-gradient(135deg, #00f0ff, #0080ff)',
+                    boxShadow: '0 0 20px rgba(0,240,255,0.4)',
+                  }}>
+                    <span className="material-symbols-outlined text-[17px]">electric_bolt</span>
+                    REGISTRAR
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
 
-          {/* Tabla: Últimos Movimientos Operativos */}
-          <div className="bg-surface-card p-4 rounded-xl border border-surface-border shadow-sm flex flex-col gap-3">
-            <div className="flex items-center justify-between pb-1 border-b border-surface-border/50">
-              <div className="flex items-center gap-1.5">
-                <span className="material-symbols-outlined text-secondary text-[20px]">swap_vert</span>
-                <h2 className="font-sans text-[15px] font-bold text-text-primary">
-                  Últimos Movimientos
-                </h2>
+          {/* Live Movements */}
+          <div className="rounded-2xl overflow-hidden" style={{
+            background: 'linear-gradient(160deg, rgba(6,12,32,0.9) 0%, rgba(2,5,16,0.95) 100%)',
+            border: '1px solid rgba(0,240,255,0.15)',
+          }}>
+            <div className="p-3.5 flex items-center justify-between" style={{ borderBottom: '1px solid rgba(0,240,255,0.1)' }}>
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-cyan-400 text-[18px]">swap_vert</span>
+                <h2 className="font-hud text-[11px] font-bold text-white tracking-wider">MOVIMIENTOS EN VIVO</h2>
               </div>
-              <span className="text-[12px] text-text-secondary">En vivo</span>
+              <span className="font-mono text-[9px] text-emerald-400 flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping inline-block" />STREAM
+              </span>
             </div>
-
-            <div className="flex flex-col gap-2">
-              {movements.slice(0, 5).map((mov) => {
+            <div className="p-3 flex flex-col gap-1.5 max-h-72 overflow-y-auto">
+              {movements.slice(0, 7).map((mov) => {
                 const isEntry = mov.type === 'Entrada';
                 return (
-                  <div
-                    key={mov.id}
-                    className="p-2.5 rounded-lg bg-surface-canvas flex items-center justify-between hover:bg-surface-container-low transition-colors border border-surface-border/60"
-                  >
+                  <div key={mov.id} className="data-row px-3 py-2.5 rounded-xl flex items-center justify-between transition-all" style={{
+                    background: 'rgba(0,240,255,0.02)',
+                    border: '1px solid rgba(0,240,255,0.06)',
+                  }}>
                     <div className="flex items-center gap-2.5">
-                      <div
-                        className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                          isEntry
-                            ? 'bg-status-available-bg text-status-available'
-                            : 'bg-status-occupied-bg text-status-occupied'
-                        }`}
-                      >
-                        <span className="material-symbols-outlined text-[16px]">
+                      <div className={`w-7 h-7 rounded-lg flex items-center justify-center`} style={{
+                        background: isEntry ? 'rgba(0,255,157,0.1)' : 'rgba(255,42,109,0.1)',
+                        border: `1px solid ${isEntry ? 'rgba(0,255,157,0.3)' : 'rgba(255,42,109,0.3)'}`,
+                      }}>
+                        <span className={`material-symbols-outlined text-[14px] ${isEntry ? 'text-emerald-400' : 'text-rose-400'}`}>
                           {isEntry ? 'login' : 'logout'}
                         </span>
                       </div>
                       <div className="flex flex-col">
-                        <span className="font-label-plate text-[14px] text-text-primary font-bold leading-tight">
-                          {mov.plate}
-                        </span>
-                        <span className="text-[11px] text-text-secondary">
-                          {mov.vehicleType} • Celda {mov.cellId}
-                        </span>
+                        <span className="font-label-plate text-[11px] text-white font-bold tracking-wider">{mov.plate}</span>
+                        <span className="text-[9px] font-mono text-slate-500">{mov.vehicleType} · {mov.cellId}</span>
                       </div>
                     </div>
-
                     <div className="flex flex-col items-end">
                       {isEntry ? (
-                        <span className="font-label-code text-[12px] text-status-available font-bold">
-                          Entrada
-                        </span>
+                        <span className="font-mono text-[10px] text-emerald-400 font-bold">ENTRADA</span>
                       ) : (
-                        <span className="font-label-code text-[12px] text-primary font-bold">
-                          ${mov.amount?.toLocaleString('es-CO')}
-                        </span>
+                        <span className="font-mono text-[10px] text-cyan-300 font-bold">${mov.amount?.toLocaleString('es-CO')}</span>
                       )}
-                      <span className="text-[11px] text-text-secondary">{mov.time}</span>
+                      <span className="text-[9px] font-mono text-slate-600">{mov.time}</span>
                     </div>
                   </div>
                 );
               })}
+              {movements.length === 0 && (
+                <div className="text-center py-6 font-mono text-[10px] text-slate-600">SIN MOVIMIENTOS REGISTRADOS</div>
+              )}
             </div>
           </div>
 
-          {/* Banner de Periféricos & Hardware del Estacionamiento */}
-          <div className="bg-surface-card rounded-xl p-4 border border-surface-border shadow-sm flex items-center justify-between">
+          {/* Hardware Status */}
+          <div className="rounded-xl p-3.5 flex items-center justify-between" style={{
+            background: 'rgba(3,6,18,0.85)',
+            border: '1px solid rgba(0,240,255,0.1)',
+          }}>
             <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-status-available-bg text-status-available">
-                <span className="material-symbols-outlined text-[20px]">print</span>
+              <div className="w-9 h-9 rounded-lg flex items-center justify-center text-cyan-400" style={{
+                background: 'rgba(0,240,255,0.06)', border: '1px solid rgba(0,240,255,0.2)',
+              }}>
+                <span className="material-symbols-outlined text-[18px]">print</span>
               </div>
-              <div className="flex flex-col">
-                <span className="text-[13px] font-bold text-text-primary">Impresora Térmica</span>
-                <span className="text-[11px] text-text-secondary">Papel 80mm: 78% disponible</span>
+              <div>
+                <span className="font-hud text-[10px] font-bold text-white block">IMPRESORA TÉRMICA T-01</span>
+                <span className="text-[9px] font-mono text-slate-500">Bobina 80mm: <span className="text-emerald-400">78%</span> disponible</span>
               </div>
             </div>
-            <span className="w-2.5 h-2.5 rounded-full bg-status-available animate-pulse" title="Conectado y en línea"></span>
+            <div className="flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-emerald-400" style={{ boxShadow: '0 0 8px #00ff9d' }} />
+              <span className="font-mono text-[9px] text-emerald-400 font-bold">ONLINE</span>
+            </div>
           </div>
         </div>
       </div>
