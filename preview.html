@@ -269,24 +269,72 @@
       } catch (e) {}
     }
 
-    // Initial cells mock
-    const initialCells = [
-      { id: 'A-01', zone: 'Zona A', category: 'Carro', status: 'occupied', plate: 'KLO-892', entryTime: '08:30 AM', duration: '3h 15m', ratePerHour: 4500, currentTotal: 14625 },
-      { id: 'A-02', zone: 'Zona A', category: 'Carro', status: 'free', ratePerHour: 4500 },
-      { id: 'A-03', zone: 'Zona A', category: 'Carro', status: 'occupied', plate: 'NVY-402', entryTime: '10:15 AM', duration: '1h 30m', ratePerHour: 4500, currentTotal: 9000 },
-      { id: 'A-04', zone: 'Zona A', category: 'Carro', status: 'occupied', plate: 'TRK-219', entryTime: '09:00 AM', duration: '2h 45m', ratePerHour: 4500, currentTotal: 13500 },
-      { id: 'A-05', zone: 'Zona A', category: 'Carro', status: 'blocked', maintenanceReason: 'Sensor Óptico', ratePerHour: 4500 },
-      { id: 'A-06', zone: 'Zona A', category: 'Carro', status: 'free', ratePerHour: 4500 },
-      { id: 'A-07', zone: 'Zona A', category: 'Carro', status: 'free', ratePerHour: 4500 },
-      { id: 'A-08', zone: 'Zona A', category: 'Carro', status: 'occupied', plate: 'MKZ-771', entryTime: '11:10 AM', duration: '0h 35m', ratePerHour: 4500, currentTotal: 4500 },
-      { id: 'A-09', zone: 'Zona A', category: 'Carro', status: 'free', ratePerHour: 4500 },
-      { id: 'A-10', zone: 'Zona A', category: 'Carro', status: 'free', ratePerHour: 4500 },
-      { id: 'B-01', zone: 'Zona B', category: 'Moto', status: 'occupied', plate: 'MTR-411', entryTime: '08:45 AM', duration: '3h 00m', ratePerHour: 2200, currentTotal: 6600 },
-      { id: 'B-02', zone: 'Zona B', category: 'Moto', status: 'free', ratePerHour: 2200 },
-      { id: 'B-03', zone: 'Zona B', category: 'Moto', status: 'occupied', plate: 'XYZ-908', entryTime: '09:30 AM', duration: '2h 15m', ratePerHour: 2200, currentTotal: 4950 },
-      { id: 'B-04', zone: 'Zona B', category: 'Moto', status: 'free', ratePerHour: 2200 },
-      { id: 'B-05', zone: 'Zona B', category: 'Moto', status: 'free', ratePerHour: 2200 },
-    ];
+    // Generate full 50 cells (Zona A: 30 Carros [A-01 a A-30], Zona B: 20 Motos [B-01 a B-20])
+    function generateInitial50Cells() {
+      const list = [];
+      const zoneAOccupied = {
+        'A-01': { plate: 'KLO-892', time: '08:30 AM', duration: '3h 15m', total: 14625 },
+        'A-03': { plate: 'NVY-402', time: '10:15 AM', duration: '1h 30m', total: 9000 },
+        'A-08': { plate: 'MKZ-771', time: '11:10 AM', duration: '0h 35m', total: 4500 },
+      };
+      for (let i = 1; i <= 30; i++) {
+        const id = `A-${i.toString().padStart(2, '0')}`;
+        if (zoneAOccupied[id]) {
+          list.push({
+            id,
+            zone: 'Zona A',
+            category: 'Carro',
+            status: 'occupied',
+            plate: zoneAOccupied[id].plate,
+            entryTime: zoneAOccupied[id].time,
+            duration: zoneAOccupied[id].duration,
+            ratePerHour: 4500,
+            currentTotal: zoneAOccupied[id].total,
+            ticketId: `#TK-A${i.toString().padStart(2, '0')}`,
+          });
+        } else {
+          list.push({
+            id,
+            zone: 'Zona A',
+            category: 'Carro',
+            status: 'free',
+            ratePerHour: 4500,
+          });
+        }
+      }
+
+      const zoneBOccupied = {
+        'B-01': { plate: 'MTR-411', time: '08:45 AM', duration: '3h 00m', total: 6600 },
+        'B-03': { plate: 'XYZ-908', time: '09:30 AM', duration: '2h 15m', total: 4950 },
+      };
+      for (let i = 1; i <= 20; i++) {
+        const id = `B-${i.toString().padStart(2, '0')}`;
+        if (zoneBOccupied[id]) {
+          list.push({
+            id,
+            zone: 'Zona B',
+            category: 'Moto',
+            status: 'occupied',
+            plate: zoneBOccupied[id].plate,
+            entryTime: zoneBOccupied[id].time,
+            duration: zoneBOccupied[id].duration,
+            ratePerHour: 2200,
+            currentTotal: zoneBOccupied[id].total,
+            ticketId: `#TK-B${i.toString().padStart(2, '0')}`,
+          });
+        } else {
+          list.push({
+            id,
+            zone: 'Zona B',
+            category: 'Moto',
+            status: 'free',
+            ratePerHour: 2200,
+          });
+        }
+      }
+      return list;
+    }
+    const initialCells = generateInitial50Cells();
 
     function App() {
       // Role & User Identity State
@@ -316,9 +364,14 @@
       const [cells, setCells] = useState(() => {
         try {
           const saved = localStorage.getItem('parkflow_cells');
-          if (saved) return JSON.parse(saved);
+          if (saved) {
+            const parsed = JSON.parse(saved);
+            if (Array.isArray(parsed) && parsed.length >= 50) return parsed;
+          }
         } catch(e) {}
-        return initialCells;
+        const fresh = generateInitial50Cells();
+        try { localStorage.setItem('parkflow_cells', JSON.stringify(fresh)); } catch(e) {}
+        return fresh;
       });
       const [time, setTime] = useState(new Date());
       const [selectedCell, setSelectedCell] = useState(null);
@@ -336,6 +389,10 @@
       // Administrator Live Sales Charts State ('daily' | 'monthly')
       const [salesChartTab, setSalesChartTab] = useState('daily');
       const [chartHoverInfo, setChartHoverInfo] = useState(null);
+
+      // Bay Map Filter States
+      const [adminBayFilter, setAdminBayFilter] = useState('all');
+      const [clientBayFilter, setClientBayFilter] = useState('all');
 
       // Client portal states
       const [clientSelectedSlot, setClientSelectedSlot] = useState('A-02');
@@ -498,7 +555,12 @@
       };
 
       const occupiedCount = cells.filter(c => c.status === 'occupied').length;
-      const totalCells = 50;
+      const totalCells = cells.length || 50;
+      const freeCount = cells.filter(c => c.status === 'free').length;
+      const freeCarsCount = cells.filter(c => c.zone === 'Zona A' && c.status === 'free').length;
+      const occupiedCarsCount = cells.filter(c => c.zone === 'Zona A' && c.status === 'occupied').length;
+      const freeMotosCount = cells.filter(c => c.zone === 'Zona B' && c.status === 'free').length;
+      const occupiedMotosCount = cells.filter(c => c.zone === 'Zona B' && c.status === 'occupied').length;
       const currentOccupancy = simulatedAforo !== null ? simulatedAforo : Math.round((occupiedCount / totalCells) * 100);
 
       const handleNav = (v) => {
@@ -847,23 +909,58 @@
 
                 {/* PASO 1: MAPA DE CELDAS INTERACTIVO */}
                 <div className="p-6 rounded-2xl border border-cyan-500/25 flex flex-col gap-4" style={{ background: 'rgba(6,12,32,0.88)' }}>
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-cyan-500/20">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-cyan-500/20">
                     <div>
                       <span className="font-hud text-sm font-bold text-white flex items-center gap-2">
                         <span className="w-5 h-5 rounded-full bg-cyan-400 text-black text-xs font-black flex items-center justify-center">1</span>
-                        ELIGE TU BAHÍA DISPONIBLE EN EL MAPA:
+                        ELIGE TU BAHÍA DISPONIBLE EN EL MAPA (50 BAHÍAS):
                       </span>
-                      <p className="font-mono text-[11px] text-slate-400 mt-0.5">Haz clic sobre cualquier celda verde para seleccionarla</p>
+                      <p className="font-mono text-[11px] text-slate-400 mt-0.5">
+                        {freeCount} bahías disponibles listas para asignar · Haz clic en cualquier celda verde
+                      </p>
                     </div>
-                    <div className="flex items-center gap-3 font-mono text-xs">
-                      <span className="flex items-center gap-1.5 text-emerald-400"><span className="w-2.5 h-2.5 rounded-full bg-emerald-400" />Libre</span>
-                      <span className="flex items-center gap-1.5 text-rose-400"><span className="w-2.5 h-2.5 rounded-full bg-rose-500" />Ocupado</span>
+
+                    {/* Zone Selector for Client */}
+                    <div className="flex items-center gap-1.5 p-1 rounded-xl bg-black/60 border border-cyan-500/30">
+                      <button
+                        type="button"
+                        onClick={() => { playCyberAudio('click'); setClientBayFilter('all'); }}
+                        className={`px-3 py-1 rounded-lg font-hud text-[10px] font-bold transition-all cursor-pointer ${
+                          clientBayFilter === 'all'
+                            ? 'bg-cyan-500/25 border border-cyan-400 text-cyan-200 shadow-[0_0_12px_rgba(0,240,255,0.4)]'
+                            : 'text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        TODAS (50)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { playCyberAudio('click'); setClientBayFilter('Zona A'); }}
+                        className={`px-3 py-1 rounded-lg font-hud text-[10px] font-bold transition-all cursor-pointer ${
+                          clientBayFilter === 'Zona A'
+                            ? 'bg-cyan-500/25 border border-cyan-400 text-cyan-200 shadow-[0_0_12px_rgba(0,240,255,0.4)]'
+                            : 'text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        🚗 CARROS (30)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { playCyberAudio('click'); setClientBayFilter('Zona B'); }}
+                        className={`px-3 py-1 rounded-lg font-hud text-[10px] font-bold transition-all cursor-pointer ${
+                          clientBayFilter === 'Zona B'
+                            ? 'bg-violet-500/25 border border-violet-400 text-violet-200 shadow-[0_0_12px_rgba(139,92,246,0.4)]'
+                            : 'text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        🏍️ MOTOS (20)
+                      </button>
                     </div>
                   </div>
 
                   {/* Grid of Bays for Client */}
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 pt-2">
-                    {cells.map(c => {
+                  <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-10 gap-2.5 pt-1">
+                    {cells.filter(c => clientBayFilter === 'all' ? true : c.zone === clientBayFilter).map(c => {
                       const isFree = c.status === 'free';
                       const isSelected = clientSelectedSlot === c.id;
                       return (
@@ -878,7 +975,7 @@
                               setClientVehicleType(c.category);
                             }
                           }}
-                          className={`p-3.5 rounded-xl border flex flex-col justify-between items-center text-center transition-all min-h-[105px] ${
+                          className={`p-2.5 rounded-xl border flex flex-col justify-between items-center text-center transition-all min-h-[96px] ${
                             !isFree
                               ? 'bg-rose-950/30 border-rose-500/30 opacity-60 cursor-not-allowed'
                               : isSelected
@@ -888,16 +985,16 @@
                         >
                           <div className="w-full flex justify-between font-mono text-[11px]">
                             <span className="font-hud font-bold text-white">{c.id}</span>
-                            <span className="text-[10px] text-slate-400">{c.zone}</span>
+                            <span className="text-[9px] text-slate-400">{c.category === 'Carro' ? '🚗' : '🏍️'}</span>
                           </div>
                           
-                          <span className={`material-symbols-outlined text-[28px] my-1 ${
+                          <span className={`material-symbols-outlined text-[24px] my-0.5 ${
                             isSelected ? 'text-cyan-300 animate-bounce' : isFree ? 'text-emerald-400' : 'text-rose-400'
                           }`}>
                             {isSelected ? 'task_alt' : isFree ? 'local_parking' : 'directions_car'}
                           </span>
 
-                          <div className="font-mono text-[10px] font-bold">
+                          <div className="font-mono text-[9px] font-bold">
                             {isSelected ? (
                               <span className="text-cyan-300 glow-text-cyan font-black">ELEGIDO</span>
                             ) : isFree ? (
@@ -1345,13 +1442,15 @@
                     <div>
                       <div className="text-[10px] font-mono text-slate-400 uppercase">Ocupación Actual</div>
                       <div className="font-mono text-2xl font-black text-cyan-300">{currentOccupancy}%</div>
+                      <div className="font-mono text-[10px] text-cyan-400/80 mt-0.5">{occupiedCount} de {totalCells} bahías</div>
                     </div>
                     <span className="material-symbols-outlined text-cyan-400 text-[32px]">speed</span>
                   </div>
                   <div className="p-4 rounded-xl border border-emerald-500/30 bg-emerald-950/30 flex justify-between items-center">
                     <div>
                       <div className="text-[10px] font-mono text-slate-400 uppercase">Bahías Disponibles</div>
-                      <div className="font-mono text-2xl font-black text-emerald-300">{totalCells - occupiedCount}</div>
+                      <div className="font-mono text-2xl font-black text-emerald-300">{freeCount}</div>
+                      <div className="font-mono text-[10px] text-emerald-400/80 mt-0.5">{freeCarsCount} Carros • {freeMotosCount} Motos</div>
                     </div>
                     <span className="material-symbols-outlined text-emerald-400 text-[32px]">check_circle</span>
                   </div>
@@ -1359,6 +1458,7 @@
                     <div>
                       <div className="text-[10px] font-mono text-slate-400 uppercase">Recaudo Estimado Hoy</div>
                       <div className="font-mono text-2xl font-black text-violet-300">$4.722.000</div>
+                      <div className="font-mono text-[10px] text-violet-400/80 mt-0.5">Liquidación en tiempo real</div>
                     </div>
                     <span className="material-symbols-outlined text-violet-400 text-[32px]">attach_money</span>
                   </div>
@@ -1366,42 +1466,102 @@
                     <div>
                       <div className="text-[10px] font-mono text-slate-400 uppercase">Vehículos en Patio</div>
                       <div className="font-mono text-2xl font-black text-rose-400">{occupiedCount}</div>
+                      <div className="font-mono text-[10px] text-rose-400/80 mt-0.5">{occupiedCarsCount} Carros • {occupiedMotosCount} Motos</div>
                     </div>
                     <span className="material-symbols-outlined text-rose-400 text-[32px]">directions_car</span>
                   </div>
                 </div>
 
-                {/* Cells Grid (Real-Time Digital Map) */}
-                <div className="p-5 rounded-2xl border border-cyan-500/25" style={{ background: 'rgba(6,12,32,0.85)' }}>
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3 pb-2 border-b border-cyan-500/20">
-                    <div className="font-hud text-sm font-bold text-white flex items-center gap-2">
-                      <span className="material-symbols-outlined text-cyan-400 text-[20px]">grid_view</span>
-                      <span>MAPA DIGITAL DE BAHÍAS // ACTUALIZACIÓN EN TIEMPO REAL</span>
+                {/* Cells Grid (Real-Time Digital Map with 50 Bahías) */}
+                <div className="p-5 rounded-2xl border border-cyan-500/25 flex flex-col gap-4" style={{ background: 'rgba(6,12,32,0.88)' }}>
+                  
+                  {/* Top Bar with Filter Tabs and Telemetry Summary */}
+                  <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pb-3 border-b border-cyan-500/20">
+                    <div>
+                      <div className="font-hud text-sm font-bold text-white flex items-center gap-2">
+                        <span className="material-symbols-outlined text-cyan-400 text-[22px]">grid_view</span>
+                        <span>MAPA DIGITAL DE BAHÍAS // CAPACIDAD COMPLETA (50 BAHÍAS)</span>
+                      </div>
+                      <div className="flex items-center gap-2.5 font-mono text-[11px] text-slate-400 mt-1">
+                        <span className="text-emerald-400 font-bold flex items-center gap-1">
+                          <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                          {freeCount} Libres
+                        </span>
+                        <span>•</span>
+                        <span className="text-rose-400 font-bold flex items-center gap-1">
+                          <span className="w-2 h-2 rounded-full bg-rose-500" />
+                          {occupiedCount} Ocupadas
+                        </span>
+                        <span>•</span>
+                        <span className="text-cyan-300">Total: {totalCells} Bahías</span>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-3 font-mono text-xs">
-                      <span className="flex items-center gap-1.5 text-emerald-400"><span className="w-2 h-2 rounded-full bg-emerald-400" />Libre</span>
-                      <span className="flex items-center gap-1.5 text-rose-400"><span className="w-2 h-2 rounded-full bg-rose-500" />Ocupado</span>
-                      <span className="flex items-center gap-1.5 text-cyan-300"><span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />Auto-Ticket</span>
+
+                    {/* Zone Filter Tabs */}
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="flex items-center gap-1 p-1 rounded-xl bg-black/60 border border-cyan-500/30">
+                        <button
+                          type="button"
+                          onClick={() => { playCyberAudio('click'); setAdminBayFilter('all'); }}
+                          className={`px-3 py-1 rounded-lg font-hud text-[10px] font-bold transition-all cursor-pointer ${
+                            adminBayFilter === 'all'
+                              ? 'bg-cyan-500/25 border border-cyan-400 text-cyan-200 shadow-[0_0_12px_rgba(0,240,255,0.4)]'
+                              : 'text-slate-400 hover:text-white'
+                          }`}
+                        >
+                          TODAS (50)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { playCyberAudio('click'); setAdminBayFilter('Zona A'); }}
+                          className={`px-3 py-1 rounded-lg font-hud text-[10px] font-bold transition-all cursor-pointer ${
+                            adminBayFilter === 'Zona A'
+                              ? 'bg-cyan-500/25 border border-cyan-400 text-cyan-200 shadow-[0_0_12px_rgba(0,240,255,0.4)]'
+                              : 'text-slate-400 hover:text-white'
+                          }`}
+                        >
+                          🚗 ZONA A // CARROS (30)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { playCyberAudio('click'); setAdminBayFilter('Zona B'); }}
+                          className={`px-3 py-1 rounded-lg font-hud text-[10px] font-bold transition-all cursor-pointer ${
+                            adminBayFilter === 'Zona B'
+                              ? 'bg-violet-500/25 border border-violet-400 text-violet-200 shadow-[0_0_12px_rgba(139,92,246,0.4)]'
+                              : 'text-slate-400 hover:text-white'
+                          }`}
+                        >
+                          🏍️ ZONA B // MOTOS (20)
+                        </button>
+                      </div>
+
+                      <div className="hidden sm:flex items-center gap-3 font-mono text-xs pl-2 border-l border-cyan-500/20">
+                        <span className="flex items-center gap-1.5 text-cyan-300">
+                          <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />Auto-Ticket
+                        </span>
+                      </div>
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-8 gap-3">
-                    {cells.map(c => {
+                  {/* Helper function / rendering for individual cell */}
+                  {(() => {
+                    const renderCell = (c) => {
                       const isOcc = c.status === 'occupied';
                       const isBlk = c.status === 'blocked';
                       const isNewLive = c.id === lastLiveEvent?.cellId && isOcc;
+                      const isMoto = c.zone === 'Zona B' || c.category === 'Moto';
                       return (
                         <button
                           key={c.id}
                           onClick={() => { playCyberAudio('click'); setSelectedCell(c); }}
-                          className={`p-3 rounded-xl border flex flex-col justify-between items-center min-h-[105px] transition-all cursor-pointer relative overflow-hidden ${
+                          className={`p-2.5 rounded-xl border flex flex-col justify-between items-center min-h-[96px] transition-all cursor-pointer relative overflow-hidden text-center group ${
                             isNewLive
-                              ? 'bg-rose-950/60 border-emerald-400 ring-2 ring-emerald-400/80 shadow-[0_0_25px_rgba(0,255,157,0.5)] scale-102'
+                              ? 'bg-rose-950/60 border-emerald-400 ring-2 ring-emerald-400/80 shadow-[0_0_20px_rgba(0,255,157,0.5)] scale-102'
                               : isOcc
-                              ? 'bg-rose-950/40 border-rose-500/50 shadow-[0_0_15px_rgba(255,42,109,0.2)]'
+                              ? 'bg-rose-950/40 border-rose-500/50 shadow-[0_0_12px_rgba(255,42,109,0.2)] hover:border-rose-400'
                               : isBlk
                               ? 'bg-amber-950/40 border-amber-500/40'
-                              : 'bg-emerald-950/30 border-emerald-500/30 hover:border-cyan-400 hover:scale-102'
+                              : 'bg-emerald-950/25 border-emerald-500/30 hover:border-cyan-400 hover:bg-cyan-950/20 hover:scale-102'
                           }`}
                         >
                           {isNewLive && (
@@ -1409,27 +1569,86 @@
                               NUEVO
                             </span>
                           )}
-                          <div className="w-full flex justify-between text-[11px] font-mono">
-                            <span className="font-hud font-bold text-white">{c.id}</span>
-                            <span className="text-[10px] text-slate-400">{c.category}</span>
+                          <div className="w-full flex justify-between items-center text-[11px] font-mono">
+                            <span className="font-hud font-bold text-white tracking-wider">{c.id}</span>
+                            <span className="text-[9px] text-slate-400">{isMoto ? '🏍️' : '🚗'}</span>
                           </div>
-                          <span className={`material-symbols-outlined text-[24px] ${isOcc ? 'text-rose-400' : isBlk ? 'text-amber-400' : 'text-emerald-400'}`}>
-                            {isOcc ? 'directions_car' : isBlk ? 'construction' : 'add_circle'}
+                          <span className={`material-symbols-outlined text-[22px] my-0.5 ${
+                            isOcc ? 'text-rose-400' : isBlk ? 'text-amber-400' : 'text-emerald-400'
+                          }`}>
+                            {isOcc ? (isMoto ? 'two_wheeler' : 'directions_car') : isBlk ? 'construction' : 'local_parking'}
                           </span>
-                          <div className="flex flex-col items-center leading-none">
-                            <span className={`font-mono text-[10px] font-bold ${isOcc ? 'text-yellow-300' : 'text-slate-400'}`}>
+                          <div className="flex flex-col items-center leading-tight w-full">
+                            <span className={`font-mono text-[10px] font-bold truncate max-w-full ${
+                              isOcc ? 'text-yellow-300' : isBlk ? 'text-amber-400' : 'text-emerald-300'
+                            }`}>
                               {isOcc ? c.plate : isBlk ? 'MANT.' : 'LIBRE'}
                             </span>
-                            {c.driverName && isOcc && (
-                              <span className="text-[8px] font-mono text-emerald-400 mt-0.5 truncate max-w-[80px]">
-                                {c.driverName.split(' ')[0]}
+                            {isOcc && (c.driverName || c.entryTime) ? (
+                              <span className="text-[8px] font-mono text-slate-400 mt-0.5 truncate max-w-full">
+                                {c.driverName ? c.driverName.split(' ')[0] : c.entryTime}
+                              </span>
+                            ) : (
+                              <span className="text-[8px] font-mono text-emerald-500/70 mt-0.5">
+                                {isMoto ? '$2.2k/h' : '$4.5k/h'}
                               </span>
                             )}
                           </div>
                         </button>
                       );
-                    })}
-                  </div>
+                    };
+
+                    const carsList = cells.filter(c => c.zone === 'Zona A');
+                    const motosList = cells.filter(c => c.zone === 'Zona B');
+
+                    return (
+                      <div className="flex flex-col gap-6">
+                        {/* SECTOR A: CARROS (30 BAHÍAS: A-01 AL A-30) */}
+                        {(adminBayFilter === 'all' || adminBayFilter === 'Zona A') && (
+                          <div className="flex flex-col gap-2.5">
+                            <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-cyan-950/30 border border-cyan-500/20">
+                              <div className="flex items-center gap-2">
+                                <span className="material-symbols-outlined text-cyan-400 text-[18px]">directions_car</span>
+                                <span className="font-hud text-xs font-bold text-white tracking-wide">
+                                  ZONA A // CARROS Y CAMIONETAS (30 BAHÍAS: A-01 A A-30)
+                                </span>
+                              </div>
+                              <div className="font-mono text-[10px] flex items-center gap-3">
+                                <span className="text-emerald-300 font-bold">{freeCarsCount} Libres</span>
+                                <span className="text-rose-400 font-bold">{occupiedCarsCount} Ocupadas</span>
+                                <span className="text-slate-400">Tarifa: $4.500/h</span>
+                              </div>
+                            </div>
+                            <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-10 gap-2.5">
+                              {carsList.map(renderCell)}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* SECTOR B: MOTOS (20 BAHÍAS: B-01 AL B-20) */}
+                        {(adminBayFilter === 'all' || adminBayFilter === 'Zona B') && (
+                          <div className="flex flex-col gap-2.5">
+                            <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-violet-950/30 border border-violet-500/20">
+                              <div className="flex items-center gap-2">
+                                <span className="material-symbols-outlined text-violet-400 text-[18px]">two_wheeler</span>
+                                <span className="font-hud text-xs font-bold text-white tracking-wide">
+                                  ZONA B // MOTOCICLETAS (20 BAHÍAS: B-01 A B-20)
+                                </span>
+                              </div>
+                              <div className="font-mono text-[10px] flex items-center gap-3">
+                                <span className="text-emerald-300 font-bold">{freeMotosCount} Libres</span>
+                                <span className="text-rose-400 font-bold">{occupiedMotosCount} Ocupadas</span>
+                                <span className="text-slate-400">Tarifa: $2.200/h</span>
+                              </div>
+                            </div>
+                            <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-10 gap-2.5">
+                              {motosList.map(renderCell)}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 {/* 📊 ADMINISTRATOR LIVE SALES & ANALYTICS CHARTS (DÍA & MES) */}
