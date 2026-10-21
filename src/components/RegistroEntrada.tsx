@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useParking } from '../context/ParkingContext.tsx';
 import { VehicleType } from '../types/parking.ts';
+import { playCyberFeedback } from '../utils/audioAlert.ts';
+
 
 export const RegistroEntrada: React.FC = () => {
   const {
@@ -67,16 +69,19 @@ export const RegistroEntrada: React.FC = () => {
 
   const handleGenerateTicket = () => {
     if (!plate || plate.length < 3) {
+      playCyberFeedback('click', 0.2);
       showToast('Por favor ingrese un número de placa válido', 'warning');
       return;
     }
     if (isDuplicate) {
+      playCyberFeedback('laser', 0.35);
       showToast('BLOQUEO ANTI-PASSBACK: El vehículo ya figura en las instalaciones', 'error');
       return;
     }
 
     const res = registerEntry(plate, category, effectiveSlot, notes);
     if (res.success) {
+      playCyberFeedback('checkout', 0.35);
       setTicketNumber(res.ticketId || `#PF-2099-${Math.floor(10000 + Math.random() * 90000)}`);
       const now = new Date();
       setTicketTime(

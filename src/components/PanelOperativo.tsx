@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useParking } from '../context/ParkingContext.tsx';
 import { ParkingCell, VehicleType } from '../types/parking.ts';
+import { playCyberFeedback } from '../utils/audioAlert.ts';
+
 
 /* ── Mini animated ring chart ── */
 const RingChart: React.FC<{ percent: number; color: string; size?: number }> = ({ percent, color, size = 64 }) => {
@@ -50,10 +52,12 @@ const CellCard: React.FC<{ cell: ParkingCell; onClick: () => void }> = ({ cell, 
   );
 
   if (isOcc) return (
-    <button onClick={onClick} className="cell-card group relative rounded-xl overflow-hidden cursor-pointer text-left w-full" style={{
-      background: 'linear-gradient(160deg, rgba(50,0,20,0.85) 0%, rgba(15,0,8,0.95) 100%)',
-      border: '1px solid rgba(255,42,109,0.35)',
-      boxShadow: '0 0 15px rgba(255,42,109,0.12)',
+    <button onClick={onClick} className="cell-card group relative rounded-xl overflow-hidden cursor-pointer text-left w-full transition-all" style={{
+      background: cell.isClientAutoOccupied
+        ? 'linear-gradient(160deg, rgba(6,30,20,0.9) 0%, rgba(20,5,15,0.95) 100%)'
+        : 'linear-gradient(160deg, rgba(50,0,20,0.85) 0%, rgba(15,0,8,0.95) 100%)',
+      border: cell.isClientAutoOccupied ? '2px solid rgba(0,255,157,0.7)' : '1px solid rgba(255,42,109,0.35)',
+      boxShadow: cell.isClientAutoOccupied ? '0 0 25px rgba(0,255,157,0.45)' : '0 0 15px rgba(255,42,109,0.12)',
       minHeight: '110px',
     }}>
       <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-rose-500/50 to-transparent" />
@@ -62,17 +66,28 @@ const CellCard: React.FC<{ cell: ParkingCell; onClick: () => void }> = ({ cell, 
       }} />
       <div className="p-3 flex flex-col h-full gap-1.5">
         <div className="flex items-center justify-between">
-          <span className="font-hud text-[10px] font-bold text-rose-300">{cell.id}</span>
-          <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" style={{ boxShadow: '0 0 8px rgba(255,42,109,0.8)' }} />
+          <div className="flex items-center gap-1.5">
+            <span className="font-hud text-[10px] font-bold text-rose-300">{cell.id}</span>
+            {cell.isClientAutoOccupied && (
+              <span className="px-1.5 py-0.2 rounded text-[7px] font-mono font-black bg-emerald-500/25 text-emerald-300 border border-emerald-400">
+                NUEVO
+              </span>
+            )}
+          </div>
+          <span className={`w-2 h-2 rounded-full ${cell.isClientAutoOccupied ? 'bg-emerald-400 animate-ping' : 'bg-rose-500 animate-pulse'}`} style={{ boxShadow: cell.isClientAutoOccupied ? '0 0 10px #00ff9d' : '0 0 8px rgba(255,42,109,0.8)' }} />
         </div>
         <div className="flex-1 flex flex-col justify-center">
           <div className="px-2 py-1 rounded-lg text-center" style={{
-            background: 'rgba(0,0,0,0.5)',
-            border: '1px solid rgba(255,42,109,0.3)',
+            background: 'rgba(0,0,0,0.6)',
+            border: cell.isClientAutoOccupied ? '1px solid rgba(0,255,157,0.5)' : '1px solid rgba(255,42,109,0.3)',
           }}>
             <span className="font-label-plate text-[13px] text-yellow-300 font-black tracking-widest block">{cell.plate}</span>
           </div>
-          <span className="text-[9px] font-mono text-slate-500 text-center mt-1">In: {cell.entryTime}</span>
+          {cell.driverName ? (
+            <span className="text-[9px] font-mono text-emerald-300 truncate text-center mt-1 block">👤 {cell.driverName.split(' ')[0]}</span>
+          ) : (
+            <span className="text-[9px] font-mono text-slate-500 text-center mt-1">In: {cell.entryTime}</span>
+          )}
         </div>
         <div className="flex items-center justify-between font-mono text-[9px] text-rose-400 font-bold pt-1" style={{ borderTop: '1px solid rgba(255,42,109,0.15)' }}>
           <span className="flex items-center gap-0.5">
@@ -171,7 +186,7 @@ export const PanelOperativo: React.FC = () => {
     freeCarsCount, occupiedCarsCount, freeMotosCount, occupiedMotosCount,
     todayRevenue, todayEntriesCount, setActiveView, setSelectedCellForModal,
     registerEntry, showToast, thresholdSettings, isCapacityCritical,
-    isCapacityWarning, isAlertDismissed, dismissAlert,
+    isCapacityWarning, isAlertDismissed, dismissAlert, userRole, lastLiveEvent,
   } = useParking();
 
   const [activeFilter, setActiveFilter] = useState<'all' | 'free' | 'occupied' | 'blocked'>('all');
@@ -181,6 +196,8 @@ export const PanelOperativo: React.FC = () => {
   const [quickTargetSlot, setQuickTargetSlot] = useState('A-02');
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [scanActive, setScanActive] = useState(false);
+  const [salesChartTab, setSalesChartTab] = useState<'daily' | 'monthly'>('daily');
+  const [chartHoverInfo, setChartHoverInfo] = useState<string | null>(null);
 
   const filterCell = (cell: ParkingCell) => {
     if (activeFilter === 'all') return true;
@@ -192,6 +209,7 @@ export const PanelOperativo: React.FC = () => {
   const freeSlots = cells.filter((c) => c.status === 'free');
 
   const handleRefresh = () => {
+    playCyberFeedback('laser', 0.25);
     setIsRefreshing(true);
     setScanActive(true);
     setTimeout(() => { setIsRefreshing(false); setScanActive(false); showToast('Telemetría cuántica sincronizada', 'info'); }, 900);
@@ -199,12 +217,20 @@ export const PanelOperativo: React.FC = () => {
 
   const handleQuickEntrySubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!quickPlate || quickPlate.length < 3) { showToast('Ingrese un número de placa válido', 'warning'); return; }
+    if (!quickPlate || quickPlate.length < 3) {
+      playCyberFeedback('click', 0.2);
+      showToast('Ingrese un número de placa válido', 'warning');
+      return;
+    }
     const res = registerEntry(quickPlate, quickVehicleType, quickTargetSlot);
-    if (res.success) { setQuickPlate(''); }
+    if (res.success) {
+      playCyberFeedback('checkout', 0.35);
+      setQuickPlate('');
+    }
   };
 
   const handleCellClick = (cell: ParkingCell) => {
+    playCyberFeedback('click', 0.15);
     if (cell.status === 'occupied') {
       setSelectedCellForModal(cell);
     } else if (cell.status === 'free') {
@@ -258,6 +284,44 @@ export const PanelOperativo: React.FC = () => {
               boxShadow: '0 0 20px rgba(255,42,109,0.5)',
             }}>
               <span className="material-symbols-outlined text-[16px]">tune</span> Ajustar Umbrales
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── REAL-TIME CLIENT AUTO-OCCUPY TELEMETRY BANNER ── */}
+      {lastLiveEvent && (
+        <div
+          className="p-3.5 rounded-xl border border-emerald-500/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-pulse"
+          style={{
+            background: 'linear-gradient(90deg, rgba(0,255,157,0.12) 0%, rgba(2,15,25,0.92) 100%)',
+            boxShadow: '0 0 25px rgba(0,255,157,0.15)',
+          }}
+        >
+          <div className="flex items-center gap-3">
+            <span className="w-3 h-3 rounded-full bg-emerald-400 animate-ping shrink-0" />
+            <div>
+              <div className="font-mono text-xs font-black text-emerald-300 flex items-center gap-2">
+                <span>📡 TELEMETRÍA EN TIEMPO REAL // AUTOGESTIÓN CLIENTE</span>
+                <span className="px-2 py-0.5 rounded text-[9px] bg-emerald-500/20 border border-emerald-500/40 text-emerald-200">
+                  EN VIVO
+                </span>
+              </div>
+              <p className="font-mono text-[11px] text-slate-300 mt-0.5">
+                El conductor <strong className="text-white">{lastLiveEvent.driver}</strong> ha ocupado la bahía <strong className="text-emerald-400 font-bold">{lastLiveEvent.cellId}</strong> con vehículo <span className="text-yellow-300 font-bold font-mono">[{lastLiveEvent.plate}]</span> ({lastLiveEvent.time}).
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => {
+                const target = cells.find((c) => c.id === lastLiveEvent.cellId);
+                if (target) setSelectedCellForModal(target);
+              }}
+              className="px-3.5 py-1.5 rounded-lg bg-emerald-500/20 border border-emerald-400 text-emerald-300 font-hud text-[10px] font-bold hover:bg-emerald-500/30 transition-all cursor-pointer shadow-[0_0_12px_rgba(0,255,157,0.2)]"
+            >
+              [ VER DETALLES CELDA ]
             </button>
           </div>
         </div>
@@ -491,6 +555,386 @@ export const PanelOperativo: React.FC = () => {
                 ))}
               </div>
             </div>
+          </div>
+
+          {/* 📊 ADMINISTRATOR LIVE SALES & ANALYTICS CHARTS (DÍA & MES) */}
+          <div
+            className="p-5 rounded-2xl border border-cyan-500/25 flex flex-col gap-5 mt-4"
+            style={{
+              background: 'linear-gradient(160deg, rgba(6,12,32,0.95) 0%, rgba(2,5,18,0.98) 100%)',
+              boxShadow: '0 0 30px rgba(0,240,255,0.06)',
+            }}
+          >
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-cyan-500/20">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-cyan-500/20 border border-cyan-400 flex items-center justify-center text-cyan-300 shadow-[0_0_15px_rgba(0,240,255,0.4)]">
+                  <span className="material-symbols-outlined text-[20px]">insights</span>
+                </div>
+                <div>
+                  <div className="font-hud text-sm font-black text-white flex items-center gap-2">
+                    <span>ESTADÍSTICAS & VENTAS EN VIVO</span>
+                    <span className="px-2 py-0.5 rounded font-mono text-[9px] font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">ADMIN DASHBOARD</span>
+                  </div>
+                  <p className="font-mono text-[10px] text-slate-400">Telemetría financiera en tiempo real, curva horaria del día y facturación mensual consolidada.</p>
+                </div>
+              </div>
+
+              {/* Toggle Switch */}
+              <div className="flex items-center p-1 rounded-xl bg-black/60 border border-cyan-500/30">
+                <button
+                  type="button"
+                  onClick={() => { playCyberFeedback('click', 0.2); setSalesChartTab('daily'); }}
+                  className={`px-3.5 py-1.5 rounded-lg font-hud text-[10px] font-black transition-all cursor-pointer ${
+                    salesChartTab === 'daily'
+                      ? 'bg-cyan-500/25 border border-cyan-400 text-cyan-200 shadow-[0_0_15px_rgba(0,240,255,0.4)]'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  📊 VENTAS HOY (EN VIVO)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { playCyberFeedback('click', 0.2); setSalesChartTab('monthly'); }}
+                  className={`px-3.5 py-1.5 rounded-lg font-hud text-[10px] font-black transition-all cursor-pointer ${
+                    salesChartTab === 'monthly'
+                      ? 'bg-violet-500/25 border border-violet-400 text-violet-200 shadow-[0_0_12px_rgba(139,92,246,0.4)]'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  📈 VENTAS DEL MES (30 DÍAS)
+                </button>
+              </div>
+            </div>
+
+            {/* TAB 1: DAILY LIVE SALES */}
+            {salesChartTab === 'daily' && (
+              <div className="flex flex-col gap-5 animate-fadeIn">
+                {/* 4 Daily Bento Metrics */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                  <div className="p-3.5 rounded-xl border border-emerald-500/30 bg-emerald-950/20">
+                    <div className="font-mono text-[10px] text-slate-400 uppercase">Recaudo Total Hoy</div>
+                    <div className="font-mono text-2xl font-black text-emerald-300 mt-0.5">$4.722.000 COP</div>
+                    <div className="font-mono text-[9px] text-emerald-400 mt-1 flex items-center gap-1">
+                      <span className="material-symbols-outlined text-[13px]">trending_up</span>
+                      <span>+18.5% vs día promedio</span>
+                    </div>
+                  </div>
+                  <div className="p-3.5 rounded-xl border border-cyan-500/30 bg-cyan-950/20">
+                    <div className="font-mono text-[10px] text-slate-400 uppercase">Tickets Procesados</div>
+                    <div className="font-mono text-2xl font-black text-cyan-300 mt-0.5">142 tickets</div>
+                    <div className="font-mono text-[9px] text-cyan-400 mt-1">98 salidas liquidadas · 44 en patio</div>
+                  </div>
+                  <div className="p-3.5 rounded-xl border border-violet-500/30 bg-violet-950/20">
+                    <div className="font-mono text-[10px] text-slate-400 uppercase">Hora Pico de Recaudo</div>
+                    <div className="font-mono text-xl font-black text-violet-300 mt-0.5">12:00 - 14:00 PM</div>
+                    <div className="font-mono text-[9px] text-violet-400 mt-1">$980.000 COP liquidados en pico</div>
+                  </div>
+                  <div className="p-3.5 rounded-xl border border-amber-500/30 bg-amber-950/20">
+                    <div className="font-mono text-[10px] text-slate-400 uppercase">Ticket Promedio</div>
+                    <div className="font-mono text-2xl font-black text-amber-300 mt-0.5">$14.750 COP</div>
+                    <div className="font-mono text-[9px] text-amber-400 mt-1">Permanencia prom: 2h 45m</div>
+                  </div>
+                </div>
+
+                {/* Daily Chart + Vehicle Breakdown */}
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+                  {/* SVG Hourly Bar & Spline Chart */}
+                  <div className="lg:col-span-8 p-4 rounded-xl border border-cyan-500/20 bg-black/60 flex flex-col gap-3">
+                    <div className="flex items-center justify-between">
+                      <span className="font-hud text-xs font-bold text-white flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
+                        CURVA DE INGRESOS POR HORA (HOY)
+                      </span>
+                      <span className="font-mono text-[10px] text-slate-400">Actualizado en vivo</span>
+                    </div>
+
+                    <div className="h-56 w-full relative">
+                      <svg viewBox="0 0 600 200" className="w-full h-full overflow-visible">
+                        <defs>
+                          <linearGradient id="cyanBarGrad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#00f0ff" stopOpacity="0.9" />
+                            <stop offset="100%" stopColor="#005577" stopOpacity="0.2" />
+                          </linearGradient>
+                          <linearGradient id="peakBarGrad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#00ff9d" stopOpacity="0.95" />
+                            <stop offset="100%" stopColor="#007744" stopOpacity="0.2" />
+                          </linearGradient>
+                        </defs>
+                        {/* Grid lines */}
+                        <line x1="40" y1="30" x2="580" y2="30" stroke="rgba(0,240,255,0.1)" strokeDasharray="3" />
+                        <line x1="40" y1="75" x2="580" y2="75" stroke="rgba(0,240,255,0.1)" strokeDasharray="3" />
+                        <line x1="40" y1="120" x2="580" y2="120" stroke="rgba(0,240,255,0.1)" strokeDasharray="3" />
+                        <line x1="40" y1="165" x2="580" y2="165" stroke="rgba(0,240,255,0.2)" />
+
+                        {/* Y Axis Labels */}
+                        <text x="35" y="34" fill="#64748b" fontSize="9" fontFamily="monospace" textAnchor="end">$1.0M</text>
+                        <text x="35" y="79" fill="#64748b" fontSize="9" fontFamily="monospace" textAnchor="end">$700K</text>
+                        <text x="35" y="124" fill="#64748b" fontSize="9" fontFamily="monospace" textAnchor="end">$350K</text>
+                        <text x="35" y="168" fill="#64748b" fontSize="9" fontFamily="monospace" textAnchor="end">$0</text>
+
+                        {/* Bars */}
+                        {[
+                          { x: 55,  h: 24,  val: '$140.000', hr: '06:00', n: 12 },
+                          { x: 115, h: 72,  val: '$480.000', hr: '08:00', n: 34 },
+                          { x: 175, h: 104, val: '$690.000', hr: '10:00', n: 48 },
+                          { x: 235, h: 148, val: '$980.000', hr: '12:00', n: 68, peak: true },
+                          { x: 295, h: 118, val: '$780.000', hr: '14:00', n: 52 },
+                          { x: 355, h: 94,  val: '$620.000', hr: '16:00', n: 42 },
+                          { x: 415, h: 76,  val: '$510.000', hr: '18:00', n: 35 },
+                          { x: 475, h: 52,  val: '$340.000', hr: '20:00', n: 24 },
+                          { x: 535, h: 28,  val: '$182.000', hr: '22:00', n: 14 },
+                        ].map((b, i) => (
+                          <g key={i} className="cursor-pointer group" onMouseEnter={() => setChartHoverInfo(`${b.hr} -> ${b.val} COP (${b.n} vehículos)`)} onMouseLeave={() => setChartHoverInfo(null)}>
+                            <rect
+                              x={b.x}
+                              y={165 - b.h}
+                              width="32"
+                              height={b.h}
+                              rx="4"
+                              fill={b.peak ? 'url(#peakBarGrad)' : 'url(#cyanBarGrad)'}
+                              stroke={b.peak ? '#00ff9d' : '#00f0ff'}
+                              strokeWidth="1"
+                              className="transition-all hover:opacity-100 opacity-80"
+                            />
+                            {b.peak && (
+                              <text x={b.x + 16} y={165 - b.h - 6} fill="#00ff9d" fontSize="8" fontFamily="monospace" fontWeight="bold" textAnchor="middle">PICO</text>
+                            )}
+                            <text x={b.x + 16} y="180" fill="#94a3b8" fontSize="9" fontFamily="monospace" textAnchor="middle">{b.hr}</text>
+                          </g>
+                        ))}
+
+                        {/* Spline Line */}
+                        <polyline
+                          fill="none"
+                          stroke="#00f0ff"
+                          strokeWidth="2.5"
+                          points="71,141 131,93 191,61 251,17 311,47 371,71 431,89 491,113 551,137"
+                          style={{ filter: 'drop-shadow(0 0 6px rgba(0,240,255,0.7))' }}
+                        />
+                        {/* Nodes */}
+                        {[[71,141], [131,93], [191,61], [251,17], [311,47], [371,71], [431,89], [491,113], [551,137]].map(([px, py], idx) => (
+                          <circle key={idx} cx={px} cy={py} r={idx === 3 ? "5" : "3.5"} fill={idx === 3 ? "#00ff9d" : "#00f0ff"} stroke="#020510" strokeWidth="2" />
+                        ))}
+                      </svg>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-2 border-t border-white/10 font-mono text-[11px]">
+                      <span className="text-slate-400">Detalle interactivo:</span>
+                      <span className="text-cyan-300 font-bold">{chartHoverInfo || 'Pasa el cursor sobre las barras para ver recaudos por hora'}</span>
+                    </div>
+                  </div>
+
+                  {/* Vehicle Category Breakdown */}
+                  <div className="lg:col-span-4 p-4 rounded-xl border border-cyan-500/20 bg-black/60 flex flex-col justify-between gap-4">
+                    <div className="font-hud text-xs font-bold text-white pb-2 border-b border-cyan-500/20">
+                      VENTAS POR TIPO DE VEHÍCULO
+                    </div>
+
+                    <div className="flex flex-col gap-3 font-mono text-xs">
+                      <div>
+                        <div className="flex justify-between mb-1">
+                          <span className="flex items-center gap-1.5 text-cyan-300 font-bold">
+                            <span className="material-symbols-outlined text-[15px]">directions_car</span>
+                            Carros (62%)
+                          </span>
+                          <span className="text-white font-bold">$2.927.640 COP</span>
+                        </div>
+                        <div className="w-full h-2 rounded-full bg-slate-800 overflow-hidden">
+                          <div className="h-full bg-cyan-400 shadow-[0_0_8px_#00f0ff]" style={{ width: '62%' }} />
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="flex justify-between mb-1">
+                          <span className="flex items-center gap-1.5 text-emerald-300 font-bold">
+                            <span className="material-symbols-outlined text-[15px]">two_wheeler</span>
+                            Motos (26%)
+                          </span>
+                          <span className="text-white font-bold">$1.227.720 COP</span>
+                        </div>
+                        <div className="w-full h-2 rounded-full bg-slate-800 overflow-hidden">
+                          <div className="h-full bg-emerald-400 shadow-[0_0_8px_#00ff9d]" style={{ width: '26%' }} />
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="flex justify-between mb-1">
+                          <span className="flex items-center gap-1.5 text-violet-300 font-bold">
+                            <span className="material-symbols-outlined text-[15px]">airport_shuttle</span>
+                            Camionetas / SUV (12%)
+                          </span>
+                          <span className="text-white font-bold">$566.640 COP</span>
+                        </div>
+                        <div className="w-full h-2 rounded-full bg-slate-800 overflow-hidden">
+                          <div className="h-full bg-violet-400 shadow-[0_0_8px_#8b5cf6]" style={{ width: '12%' }} />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="p-3 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-[10px] font-mono text-cyan-300 flex items-center justify-between">
+                      <span>Rotación por bahía:</span>
+                      <strong className="font-hud text-white">4.8 rotaciones/día</strong>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* TAB 2: MONTHLY ACCUMULATED SALES */}
+            {salesChartTab === 'monthly' && (
+              <div className="flex flex-col gap-5 animate-fadeIn">
+                {/* 4 Monthly Bento Metrics */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                  <div className="p-3.5 rounded-xl border border-violet-500/30 bg-violet-950/20">
+                    <div className="font-mono text-[10px] text-slate-400 uppercase">Recaudo Acumulado Mes</div>
+                    <div className="font-mono text-2xl font-black text-violet-300 mt-0.5">$28.450.000 COP</div>
+                    <div className="font-mono text-[9px] text-violet-400 mt-1 flex items-center gap-1">
+                      <span className="material-symbols-outlined text-[13px]">trending_up</span>
+                      <span>+18.4% vs mes anterior</span>
+                    </div>
+                  </div>
+                  <div className="p-3.5 rounded-xl border border-amber-500/30 bg-amber-950/20">
+                    <div className="font-mono text-[10px] text-slate-400 uppercase">Meta Mensual Proyectada</div>
+                    <div className="font-mono text-2xl font-black text-amber-300 mt-0.5">$34.000.000 COP</div>
+                    <div className="font-mono text-[9px] text-amber-400 mt-1">83.6% alcanzado a la fecha</div>
+                  </div>
+                  <div className="p-3.5 rounded-xl border border-emerald-500/30 bg-emerald-950/20">
+                    <div className="font-mono text-[10px] text-slate-400 uppercase">Proyección Cierre Mes</div>
+                    <div className="font-mono text-2xl font-black text-emerald-300 mt-0.5">$34.800.000 COP</div>
+                    <div className="font-mono text-[9px] text-emerald-400 mt-1">Superávit proyectado: +$800.000</div>
+                  </div>
+                  <div className="p-3.5 rounded-xl border border-cyan-500/30 bg-cyan-950/20">
+                    <div className="font-mono text-[10px] text-slate-400 uppercase">Días Mayor Afluencia</div>
+                    <div className="font-mono text-xl font-black text-cyan-300 mt-0.5">Viernes & Sábados</div>
+                    <div className="font-mono text-[9px] text-cyan-400 mt-1">Promedio: $1.420.000 / día</div>
+                  </div>
+                </div>
+
+                {/* Monthly Chart + Payment Method Breakdown */}
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+                  <div className="lg:col-span-8 p-4 rounded-xl border border-violet-500/20 bg-black/60 flex flex-col gap-3">
+                    <div className="flex items-center justify-between">
+                      <span className="font-hud text-xs font-bold text-white flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-violet-400 animate-pulse" />
+                        RECAUDO ACUMULADO POR SEMANAS (MES EN CURSO)
+                      </span>
+                      <span className="font-mono text-[10px] text-slate-400">Meta: $34M COP</span>
+                    </div>
+
+                    <div className="h-56 w-full relative">
+                      <svg viewBox="0 0 600 200" className="w-full h-full overflow-visible">
+                        <defs>
+                          <linearGradient id="violetBarGrad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#8b5cf6" stopOpacity="0.9" />
+                            <stop offset="100%" stopColor="#3b0764" stopOpacity="0.2" />
+                          </linearGradient>
+                          <linearGradient id="activeMonthGrad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#00f0ff" stopOpacity="0.9" />
+                            <stop offset="100%" stopColor="#0369a1" stopOpacity="0.2" />
+                          </linearGradient>
+                        </defs>
+
+                        <line x1="50" y1="30" x2="570" y2="30" stroke="rgba(139,92,246,0.15)" strokeDasharray="3" />
+                        <line x1="50" y1="75" x2="570" y2="75" stroke="rgba(139,92,246,0.15)" strokeDasharray="3" />
+                        <line x1="50" y1="120" x2="570" y2="120" stroke="rgba(139,92,246,0.15)" strokeDasharray="3" />
+                        <line x1="50" y1="165" x2="570" y2="165" stroke="rgba(139,92,246,0.3)" />
+
+                        <text x="45" y="34" fill="#64748b" fontSize="9" fontFamily="monospace" textAnchor="end">$10M</text>
+                        <text x="45" y="79" fill="#64748b" fontSize="9" fontFamily="monospace" textAnchor="end">$7.5M</text>
+                        <text x="45" y="124" fill="#64748b" fontSize="9" fontFamily="monospace" textAnchor="end">$5.0M</text>
+                        <text x="45" y="168" fill="#64748b" fontSize="9" fontFamily="monospace" textAnchor="end">$0</text>
+
+                        {[
+                          { x: 80,  w: 80, h: 102, val: '$6.850.000', label: 'Semana 1 (Días 1-7)', target: '$6.2M' },
+                          { x: 210, w: 80, h: 111, val: '$7.420.000', label: 'Semana 2 (Días 8-14)', target: '$6.8M' },
+                          { x: 340, w: 80, h: 122, val: '$8.150.000', label: 'Semana 3 (Días 15-21)', target: '$7.5M' },
+                          { x: 470, w: 80, h: 90,  val: '$6.030.000', label: 'Semana 4 (Días 22-30)', inProgress: true, target: '$8.2M' },
+                        ].map((m, idx) => (
+                          <g key={idx} className="cursor-pointer group" onMouseEnter={() => setChartHoverInfo(`${m.label} -> ${m.val} COP (Meta: ${m.target})`)} onMouseLeave={() => setChartHoverInfo(null)}>
+                            <rect
+                              x={m.x}
+                              y={165 - m.h}
+                              width={m.w}
+                              height={m.h}
+                              rx="6"
+                              fill={m.inProgress ? 'url(#activeMonthGrad)' : 'url(#violetBarGrad)'}
+                              stroke={m.inProgress ? '#00f0ff' : '#8b5cf6'}
+                              strokeWidth="1.5"
+                              className="transition-all opacity-85 hover:opacity-100"
+                            />
+                            <text x={m.x + m.w / 2} y={165 - m.h - 8} fill={m.inProgress ? '#00f0ff' : '#c084fc'} fontSize="10" fontFamily="monospace" fontWeight="bold" textAnchor="middle">{m.val}</text>
+                            <text x={m.x + m.w / 2} y="182" fill="#94a3b8" fontSize="9" fontFamily="monospace" textAnchor="middle">Sem {idx + 1}</text>
+                          </g>
+                        ))}
+
+                        {/* Target Line */}
+                        <line x1="50" y1="52" x2="570" y2="52" stroke="#ffb703" strokeWidth="2" strokeDasharray="5" style={{ filter: 'drop-shadow(0 0 5px #ffb703)' }} />
+                        <text x="565" y="48" fill="#ffb703" fontSize="9" fontFamily="monospace" textAnchor="end">Meta Promedio Semanal ($7.5M)</text>
+                      </svg>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-2 border-t border-white/10 font-mono text-[11px]">
+                      <span className="text-slate-400">Detalle interactivo:</span>
+                      <span className="text-violet-300 font-bold">{chartHoverInfo || 'Pasa el cursor sobre las barras de las semanas'}</span>
+                    </div>
+                  </div>
+
+                  {/* Payment Methods Breakdown */}
+                  <div className="lg:col-span-4 p-4 rounded-xl border border-violet-500/20 bg-black/60 flex flex-col justify-between gap-4">
+                    <div className="font-hud text-xs font-bold text-white pb-2 border-b border-violet-500/20">
+                      VENTAS POR MEDIO DE PAGO (MES)
+                    </div>
+
+                    <div className="flex flex-col gap-3 font-mono text-xs">
+                      <div>
+                        <div className="flex justify-between mb-1">
+                          <span className="text-emerald-300 font-bold">Billetera Conductor (34%)</span>
+                          <span className="text-white font-bold">$9.673.000 COP</span>
+                        </div>
+                        <div className="w-full h-2 rounded-full bg-slate-800 overflow-hidden">
+                          <div className="h-full bg-emerald-400 shadow-[0_0_8px_#00ff9d]" style={{ width: '34%' }} />
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="flex justify-between mb-1">
+                          <span className="text-cyan-300 font-bold">QR Nequi / Daviplata (31%)</span>
+                          <span className="text-white font-bold">$8.819.500 COP</span>
+                        </div>
+                        <div className="w-full h-2 rounded-full bg-slate-800 overflow-hidden">
+                          <div className="h-full bg-cyan-400 shadow-[0_0_8px_#00f0ff]" style={{ width: '31%' }} />
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="flex justify-between mb-1">
+                          <span className="text-violet-300 font-bold">Datáfono / Tarjetas (22%)</span>
+                          <span className="text-white font-bold">$6.259.000 COP</span>
+                        </div>
+                        <div className="w-full h-2 rounded-full bg-slate-800 overflow-hidden">
+                          <div className="h-full bg-violet-400 shadow-[0_0_8px_#8b5cf6]" style={{ width: '22%' }} />
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="flex justify-between mb-1">
+                          <span className="text-amber-300 font-bold">Efectivo en Taquilla (13%)</span>
+                          <span className="text-white font-bold">$3.698.500 COP</span>
+                        </div>
+                        <div className="w-full h-2 rounded-full bg-slate-800 overflow-hidden">
+                          <div className="h-full bg-amber-400 shadow-[0_0_8px_#ffb703]" style={{ width: '13%' }} />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="p-3 rounded-lg bg-violet-500/10 border border-violet-500/20 text-[10px] font-mono text-violet-300 flex items-center justify-between">
+                      <span>Cumplimiento del objetivo:</span>
+                      <strong className="font-hud text-emerald-400">83.6% alcanzado</strong>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 

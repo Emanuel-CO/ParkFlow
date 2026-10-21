@@ -102,3 +102,58 @@ export function playCapacityAlertSound(soundType: AlertSoundType = 'alarm', volu
     });
   }
 }
+
+/**
+ * Lightweight futuristic UI sound feedback (click, success, laser, checkout)
+ */
+export function playCyberFeedback(type: 'click' | 'success' | 'checkout' | 'laser' = 'click', volume: number = 0.25): void {
+  const ctx = getAudioContext();
+  if (!ctx) return;
+
+  const now = ctx.currentTime;
+  const master = ctx.createGain();
+  master.gain.setValueAtTime(Math.min(0.3, volume), now);
+  master.connect(ctx.destination);
+
+  if (type === 'click') {
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(1400, now);
+    osc.frequency.exponentialRampToValueAtTime(700, now + 0.04);
+    g.gain.setValueAtTime(0.4, now);
+    g.gain.exponentialRampToValueAtTime(0.001, now + 0.04);
+    osc.connect(g);
+    g.connect(master);
+    osc.start(now);
+    osc.stop(now + 0.05);
+  } else if (type === 'laser') {
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(2400, now);
+    osc.frequency.exponentialRampToValueAtTime(300, now + 0.12);
+    g.gain.setValueAtTime(0.3, now);
+    g.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+    osc.connect(g);
+    g.connect(master);
+    osc.start(now);
+    osc.stop(now + 0.13);
+  } else if (type === 'checkout' || type === 'success') {
+    [0, 0.08, 0.16].forEach((delay, idx) => {
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = 'triangle';
+      const notes = [523.25, 659.25, 1046.5]; // C5, E5, C6
+      osc.frequency.setValueAtTime(notes[idx], now + delay);
+      g.gain.setValueAtTime(0, now + delay);
+      g.gain.linearRampToValueAtTime(0.5, now + delay + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.001, now + delay + 0.25);
+      osc.connect(g);
+      g.connect(master);
+      osc.start(now + delay);
+      osc.stop(now + delay + 0.28);
+    });
+  }
+}
+

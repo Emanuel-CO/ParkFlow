@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback, useRef } from 'react';
-import { ParkingCell, Movement, Transaction, TariffScheme, ActiveView, VehicleType, CapacityThresholdSettings, AlertSoundType } from '../types/parking.ts';
+import { ParkingCell, Movement, Transaction, TariffScheme, ActiveView, VehicleType, CapacityThresholdSettings, AlertSoundType, UserRole, UserProfile, LiveOccupancyEvent } from '../types/parking.ts';
 import { playCapacityAlertSound } from '../utils/audioAlert.ts';
 import { ParkFlowApi, DbStatusResponse } from '../services/api.ts';
 
@@ -65,6 +65,27 @@ interface ParkingContextType {
   setIsXamppModalOpen: (open: boolean) => void;
   reconnectDb: () => Promise<void>;
   initializeDatabase: () => Promise<void>;
+  // User Role & Security Authentication State
+  userRole: UserRole | null;
+  setUserRole: (role: UserRole | null) => void;
+  currentUser: UserProfile | null;
+  setCurrentUser: (user: UserProfile | null) => void;
+  showRoleModal: boolean;
+  setShowRoleModal: (show: boolean) => void;
+  selectedRoleForAuth: UserRole | null;
+  setSelectedRoleForAuth: (role: UserRole | null) => void;
+  authenticateUser: (user: UserProfile) => void;
+  handleLogout: () => void;
+  lastLiveEvent: LiveOccupancyEvent | null;
+  setLastLiveEvent: (event: LiveOccupancyEvent | null) => void;
+  registerClientAutoOccupy: (
+    cellId: string,
+    plate: string,
+    category: VehicleType,
+    driverName?: string,
+    driverDoc?: string,
+    driverPhone?: string
+  ) => { success: boolean; ticketId?: string; cellId?: string; error?: string };
 }
 
 const defaultThresholdSettings: CapacityThresholdSettings = {
@@ -296,8 +317,26 @@ const initialTransactions: Transaction[] = [
 const ParkingContext = createContext<ParkingContextType | undefined>(undefined);
 
 export const ParkingProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [activeView, setActiveView] = useState<ActiveView>('panel-operativo');
-  const [cells, setCells] = useState<ParkingCell[]>(generateInitialCells);
+  const [userRole, setUserRoleState] = useState<UserRole | null>(null);
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
+  const [showRoleModal, setShowRoleModal] = useState<boolean>(true);
+  const [selectedRoleForAuth, setSelectedRoleForAuth] = useState<UserRole | null>(null);
+  const [activeView, setActiveView] = useState<ActiveView>('portal-cliente');
+  const [cells, setCells] = useState<ParkingCell[]>(() => {
+    try {
+      const saved = localStorage.getItem('parkflow_cells');
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return generateInitialCells();
+  });
+  const [lastLiveEvent, setLastLiveEvent] = useState<LiveOccupancyEvent | null>(() => {
+    try {
+      const saved = localStorage.getItem('parkflow_last_event');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
   const [movements, setMovements] = useState<Movement[]>(initialMovements);
   const [transactions, setTransactions] = useState<Transaction[]>(initialTransactions);
   const [tariffs, setTariffs] = useState<Record<VehicleType, TariffScheme>>(initialTariffs);
@@ -346,6 +385,79 @@ export const ParkingProvider: React.FC<{ children: ReactNode }> = ({ children })
   const removeToast = useCallback((id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
+
+  // Clock ticking and cross-tab real-time synchronization
+  useEffect(() => {
+    const updateTime = () => {
+      const now = new Date();
+      setCurrentTimeString(now.toLocaleTimeString('es-CO', { hour12: true }));
+    };
+    updateTime();
+    const interval = setInterval(updateTime, 1000);
+
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === 'parkflow_cells' && e.newValue) {
+        try {
+          setCells(JSON.parse(e.newValue));
+        } catch {}
+      }
+      if (e.key === 'parkflow_last_event' && e.newValue) {
+        try {
+          const ev = JSON.parse(e.newValue);
+          setLastLiveEvent(ev);
+          playCapacityAlertSound('laser', 0.6);
+          showToast(`📡 TELEMETRÍA EN VIVO: El cliente ${ev.driver} (${ev.plate}) ocupó la bahía ${ev.cellId}`, 'info');
+        } catch {}
+      }
+    };
+    window.addEventListener('storage', handleStorage);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('storage', handleStorage);
+    };
+  }, [showToast]);
+
+  const authenticateUser = useCallback((user: UserProfile) => {
+    setCurrentUser(user);
+    setUserRoleState(user.role);
+    setShowRoleModal(false);
+    setSelectedRoleForAuth(null);
+    if (user.role === 'cliente') {
+      setActiveView('portal-cliente');
+      showToast(`¡Bienvenido Conductor ${user.name}! Sesión segura iniciada.`, 'success');
+    } else if (user.role === 'operador') {
+      setActiveView('panel-operativo');
+      showToast(`Turno de Operador activo: ${user.name} [${user.badge}]`, 'info');
+    } else if (user.role === 'administrador') {
+      setActiveView('panel-operativo');
+      showToast(`Acceso Maestro Verificado: Ing. Valderrama`, 'success');
+    }
+  }, [showToast]);
+
+  const handleLogout = useCallback(() => {
+    setCurrentUser(null);
+    setUserRoleState(null);
+    setSelectedRoleForAuth(null);
+    setShowRoleModal(true);
+    setActiveView('portal-cliente');
+    showToast('Sesión cerrada con éxito', 'info');
+  }, [showToast]);
+
+  const setUserRole = useCallback((role: UserRole | null) => {
+    setUserRoleState(role);
+    setShowRoleModal(false);
+    if (role === 'cliente') {
+      setActiveView('portal-cliente');
+      showToast('Bienvenido al Portal del Conductor (Cliente)', 'info');
+    } else if (role === 'operador') {
+      setActiveView('panel-operativo');
+      showToast('Sesión de Operador de Turno iniciada', 'info');
+    } else if (role === 'administrador') {
+      setActiveView('panel-operativo');
+      showToast('Sesión de Administrador Global iniciada (Acceso Total)', 'success');
+    }
+  }, [showToast]);
 
   // Fetch all data from MySQL via PHP API
   const loadDataFromDb = useCallback(async (silent = false) => {
@@ -728,6 +840,90 @@ export const ParkingProvider: React.FC<{ children: ReactNode }> = ({ children })
     [cells, tariffs, thresholdSettings.autoBlockOnMax, totalOccupied, totalCapacity, isDbConnected, showToast, loadDataFromDb]
   );
 
+  // Register Client Auto-Occupy (Portal Conductor / Cliente en tiempo real)
+  const registerClientAutoOccupy = useCallback(
+    (
+      cellId: string,
+      plateInput: string,
+      category: VehicleType,
+      driverName?: string,
+      driverDoc?: string,
+      driverPhone?: string
+    ) => {
+      const sanitizedPlate = plateInput.trim().toUpperCase();
+      const now = new Date();
+      const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')} ${now.getHours() >= 12 ? 'PM' : 'AM'}`;
+      const ticketNum = `#PK-CLI-${Math.floor(1000 + Math.random() * 9000)}`;
+      const currentTariff = tariffs[category] || tariffs['Carro'];
+
+      let ok = false;
+      setCells((prev) => {
+        const target = prev.find((c) => c.id === cellId);
+        if (!target) return prev;
+
+        const updated = prev.map((c) => {
+          if (c.id === cellId) {
+            return {
+              ...c,
+              status: 'occupied' as const,
+              plate: sanitizedPlate,
+              category,
+              entryTime: timeStr,
+              entryTimestamp: Date.now(),
+              occupiedTimestamp: Date.now(),
+              duration: '0h 01m',
+              currentTotal: currentTariff.minFraction,
+              ratePerHour: currentTariff.ratePerHour,
+              ticketId: ticketNum,
+              driverName: driverName || 'Alejandro Vélez',
+              driverDoc: driverDoc || '1020304050',
+              driverPhone: driverPhone || '310 987 6543',
+              isClientAutoOccupied: true,
+              notes: 'Autogestión Conductor Portal Cliente',
+            };
+          }
+          return c;
+        });
+
+        try {
+          localStorage.setItem('parkflow_cells', JSON.stringify(updated));
+        } catch {}
+        ok = true;
+        return updated;
+      });
+
+      const liveEv: LiveOccupancyEvent = {
+        cellId,
+        plate: sanitizedPlate,
+        driver: driverName || 'Alejandro Vélez',
+        ticketId: ticketNum,
+        time: timeStr,
+        timestamp: Date.now(),
+      };
+      setLastLiveEvent(liveEv);
+      try {
+        localStorage.setItem('parkflow_last_event', JSON.stringify(liveEv));
+      } catch {}
+
+      // Add movement
+      const newMovement: Movement = {
+        id: `mov-${Date.now()}`,
+        ticketId: ticketNum,
+        plate: sanitizedPlate,
+        vehicleType: category,
+        cellId,
+        type: 'Entrada',
+        time: timeStr,
+        timestamp: Date.now(),
+      };
+      setMovements((prev) => [newMovement, ...prev.slice(0, 9)]);
+
+      showToast(`¡Puesto ${cellId} ocupado en tiempo real! Barrera de acceso abierta.`, 'success');
+      return { success: true, ticketId: ticketNum, cellId };
+    },
+    [tariffs, showToast]
+  );
+
   // Process Checkout
   const processCheckout = useCallback(
     (cellIdOrPlate: string, paymentMethod: 'Efectivo' | 'Bancolombia' | 'QR Nequi/Davi' | 'Datáfono' = 'Efectivo', amountPaid?: number) => {
@@ -757,19 +953,23 @@ export const ParkingProvider: React.FC<{ children: ReactNode }> = ({ children })
       const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')} ${now.getHours() >= 12 ? 'PM' : 'AM'}`;
 
       // Free cell optimistically
-      setCells((prev) =>
-        prev.map((cell) =>
+      setCells((prev) => {
+        const updated = prev.map((cell) =>
           cell.id === targetCell.id
             ? {
                 id: cell.id,
                 zone: cell.zone,
                 category: cell.category,
-                status: 'free',
+                status: 'free' as const,
                 ratePerHour: cell.ratePerHour,
               }
             : cell
-        )
-      );
+        );
+        try {
+          localStorage.setItem('parkflow_cells', JSON.stringify(updated));
+        } catch {}
+        return updated;
+      });
 
       // Add exit movement
       const exitMovement: Movement = {
@@ -975,6 +1175,19 @@ export const ParkingProvider: React.FC<{ children: ReactNode }> = ({ children })
         setIsXamppModalOpen,
         reconnectDb,
         initializeDatabase,
+        userRole,
+        setUserRole,
+        currentUser,
+        setCurrentUser,
+        showRoleModal,
+        setShowRoleModal,
+        selectedRoleForAuth,
+        setSelectedRoleForAuth,
+        authenticateUser,
+        handleLogout,
+        lastLiveEvent,
+        setLastLiveEvent,
+        registerClientAutoOccupy,
       }}
     >
       {children}

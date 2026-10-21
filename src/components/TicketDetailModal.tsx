@@ -132,6 +132,25 @@ export const TicketDetailModal: React.FC = () => {
             </span>
           </div>
 
+          {cell.driverName && (
+            <div className="rounded-xl p-3" style={{
+              background: 'rgba(0,255,157,0.06)',
+              border: '1px solid rgba(0,255,157,0.3)',
+            }}>
+              <div className="font-mono text-[9px] text-emerald-400 font-bold uppercase tracking-wider mb-1 flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                CONDUCTOR ASIGNADO (AUTOGESTIÓN CLIENTE)
+              </div>
+              <div className="flex justify-between items-center text-xs font-mono">
+                <span className="text-white font-bold">{cell.driverName}</span>
+                <span className="text-slate-400">CC: {cell.driverDoc || '1020304050'}</span>
+              </div>
+              {cell.ticketId && (
+                <div className="text-[10px] font-mono text-cyan-300 mt-1">Ticket ID: {cell.ticketId}</div>
+              )}
+            </div>
+          )}
+
           {cell.notes && (
             <div className="px-3 py-2.5 rounded-xl" style={{
               background: 'rgba(255,255,255,0.03)',

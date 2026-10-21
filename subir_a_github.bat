@@ -16,7 +16,7 @@ git add .
 
 echo.
 echo [*] Creando commit de cambios...
-git commit -m "feat: sincronizacion y conexion con XAMPP MySQL y PHP API" 2>nul
+git commit -m "feat: telemetria en tiempo real de ocupacion de puestos y graficas de estadisticas de ventas diarias y mensuales" 2>nul
 if %ERRORLEVEL% NEQ 0 (
     echo [INFO] No habia cambios nuevos pendientes por commitear (ya estan en el commit local).
 )

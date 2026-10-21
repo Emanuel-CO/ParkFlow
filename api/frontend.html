@@ -1,0 +1,2696 @@
+<!DOCTYPE html>
+<html lang="es" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ParkFlow 2099 // Smart Parking Telemetry OS</title>
+  <meta name="description" content="Sistema operativo inteligente de gestión y control de parqueadero con telemetría en tiempo real y selector de roles." />
+  <meta name="theme-color" content="#020510" />
+
+  <!-- Google Fonts: Orbitron, Rajdhani, JetBrains Mono, Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700;800&family=Orbitron:wght@400;500;600;700;800;900&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet" />
+
+  <!-- Tailwind CSS 3 CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            primary: '#00f0ff',
+            secondary: '#8b5cf6',
+            tertiary: '#00ff9d',
+            'surface-dark': '#020510',
+            'surface-card': '#07102a',
+            'status-available': '#00ff9d',
+            'status-occupied': '#ff2a6d',
+            'status-warning': '#ffb703',
+          },
+          fontFamily: {
+            hud: ['Orbitron', 'sans-serif'],
+            tech: ['Rajdhani', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'monospace'],
+            sans: ['Inter', 'sans-serif'],
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- React 18 & Babel Standalone CDN -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <style>
+    html { background: #020510; color: #f1f5f9; }
+    body { margin: 0; background: #020510; font-family: 'Inter', sans-serif; overflow-x: hidden; }
+
+    /* Ambient radial glow backdrop */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background: 
+        radial-gradient(ellipse 80% 60% at 10% 0%, rgba(0, 240, 255, 0.05) 0%, transparent 60%),
+        radial-gradient(ellipse 60% 50% at 90% 100%, rgba(139, 92, 246, 0.06) 0%, transparent 60%),
+        radial-gradient(ellipse 50% 40% at 50% 50%, rgba(0, 20, 60, 0.4) 0%, transparent 80%);
+      pointer-events: none;
+      z-index: 0;
+    }
+    body::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: 
+        linear-gradient(rgba(0, 240, 255, 0.02) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0, 240, 255, 0.02) 1px, transparent 1px);
+      background-size: 48px 48px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* Neon Glows */
+    .glow-cyan { box-shadow: 0 0 20px rgba(0, 240, 255, 0.5), 0 0 60px rgba(0, 240, 255, 0.15); }
+    .glow-cyan-sm { box-shadow: 0 0 10px rgba(0, 240, 255, 0.35); }
+    .glow-emerald { box-shadow: 0 0 20px rgba(0, 255, 157, 0.5); }
+    .glow-red { box-shadow: 0 0 20px rgba(255, 42, 109, 0.6); }
+    .glow-amber { box-shadow: 0 0 20px rgba(255, 183, 3, 0.5); }
+    .glow-text-cyan { text-shadow: 0 0 20px rgba(0, 240, 255, 0.8), 0 0 40px rgba(0, 240, 255, 0.4); }
+    .glow-text-emerald { text-shadow: 0 0 20px rgba(0, 255, 157, 0.8), 0 0 40px rgba(0, 255, 157, 0.4); }
+    .glow-text-red { text-shadow: 0 0 20px rgba(255, 42, 109, 0.8); }
+
+    /* Scanlines */
+    .scanline-bg {
+      background-image: linear-gradient(rgba(0, 240, 255, 0.025) 1px, transparent 1px),
+                        linear-gradient(90deg, rgba(0, 240, 255, 0.025) 1px, transparent 1px);
+      background-size: 32px 32px;
+    }
+
+    /* HUD Corner Accents */
+    .hud-corners { position: relative; }
+    .hud-corners::before {
+      content: '';
+      position: absolute;
+      top: -1px; left: -1px;
+      width: 12px; height: 12px;
+      border-top: 2px solid #00f0ff;
+      border-left: 2px solid #00f0ff;
+      pointer-events: none;
+    }
+    .hud-corners::after {
+      content: '';
+      position: absolute;
+      bottom: -1px; right: -1px;
+      width: 12px; height: 12px;
+      border-bottom: 2px solid #00f0ff;
+      border-right: 2px solid #00f0ff;
+      pointer-events: none;
+    }
+
+    /* Plate Bezel */
+    .plate-bezel {
+      background: linear-gradient(180deg, #101827 0%, #030712 100%);
+      border: 2px solid rgba(250, 204, 21, 0.5);
+      box-shadow: 0 0 20px rgba(250, 204, 21, 0.2), inset 0 0 10px rgba(0, 0, 0, 0.9);
+    }
+
+    /* Laser Reticle */
+    .camera-reticle {
+      position: absolute;
+      inset: 12px;
+      border: 1px dashed rgba(0, 240, 255, 0.4);
+      pointer-events: none;
+      z-index: 10;
+    }
+    .camera-reticle::before {
+      content: '';
+      position: absolute;
+      top: 50%; left: 0; right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(0, 240, 255, 0.6), transparent);
+    }
+    .camera-reticle::after {
+      content: '';
+      position: absolute;
+      left: 50%; top: 0; bottom: 0;
+      width: 1px;
+      background: linear-gradient(180deg, transparent, rgba(0, 240, 255, 0.6), transparent);
+    }
+
+    /* Cyber Buttons */
+    .cyber-btn-cyan {
+      background: linear-gradient(135deg, rgba(0, 240, 255, 0.15) 0%, rgba(0, 180, 216, 0.25) 100%);
+      border: 1px solid rgba(0, 240, 255, 0.5);
+      box-shadow: 0 0 20px rgba(0, 240, 255, 0.2);
+      color: #7deeff;
+      transition: all 0.2s ease;
+    }
+    .cyber-btn-cyan:hover {
+      background: linear-gradient(135deg, rgba(0, 240, 255, 0.3) 0%, rgba(0, 180, 216, 0.45) 100%);
+      border-color: #00f0ff;
+      box-shadow: 0 0 30px rgba(0, 240, 255, 0.5);
+      color: #ffffff;
+      transform: translateY(-1px);
+    }
+    .cyber-btn-emerald {
+      background: linear-gradient(135deg, rgba(0, 255, 157, 0.15) 0%, rgba(5, 150, 105, 0.25) 100%);
+      border: 1px solid rgba(0, 255, 157, 0.5);
+      box-shadow: 0 0 20px rgba(0, 255, 157, 0.2);
+      color: #6effcd;
+      transition: all 0.2s ease;
+    }
+    .cyber-btn-emerald:hover {
+      background: linear-gradient(135deg, rgba(0, 255, 157, 0.3) 0%, rgba(5, 150, 105, 0.45) 100%);
+      border-color: #00ff9d;
+      box-shadow: 0 0 30px rgba(0, 255, 157, 0.5);
+      color: #ffffff;
+      transform: translateY(-1px);
+    }
+    .cyber-btn-violet {
+      background: linear-gradient(135deg, rgba(139, 92, 246, 0.15) 0%, rgba(109, 40, 217, 0.25) 100%);
+      border: 1px solid rgba(139, 92, 246, 0.5);
+      box-shadow: 0 0 20px rgba(139, 92, 246, 0.2);
+      color: #c4b5fd;
+      transition: all 0.2s ease;
+    }
+
+    /* Cyber Range */
+    .cyber-range {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 100%;
+      height: 6px;
+      background: rgba(0, 240, 255, 0.15);
+      border-radius: 9999px;
+      outline: none;
+      border: 1px solid rgba(0, 240, 255, 0.3);
+    }
+    .cyber-range::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: #00f0ff;
+      cursor: pointer;
+      box-shadow: 0 0 14px #00f0ff;
+      border: 2px solid #ffffff;
+    }
+
+    /* Audio visualizer animations */
+    @keyframes audio-wave-1 { 0%, 100% { height: 6px; } 50% { height: 24px; } }
+    @keyframes audio-wave-2 { 0%, 100% { height: 18px; } 50% { height: 8px; } }
+    @keyframes audio-wave-3 { 0%, 100% { height: 10px; } 50% { height: 26px; } }
+    .audio-bar-1 { animation: audio-wave-1 0.7s ease-in-out infinite; }
+    .audio-bar-2 { animation: audio-wave-2 0.5s ease-in-out infinite 0.1s; }
+    .audio-bar-3 { animation: audio-wave-3 0.65s ease-in-out infinite 0.2s; }
+
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #020510; }
+    ::-webkit-scrollbar-thumb { background: linear-gradient(180deg, #00f0ff 0%, #8b5cf6 100%); border-radius: 9999px; }
+  </style>
+</head>
+<body class="bg-[#020510] font-sans text-slate-100 antialiased">
+  <div id="root"></div>
+
+  <!-- APPLICATION SCRIPT (BABEL COMPILATION) -->
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    // Web Audio Synthesizer
+    let audioCtx = null;
+    function playCyberAudio(type = 'click') {
+      try {
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        const now = audioCtx.currentTime;
+        const master = audioCtx.createGain();
+        master.gain.setValueAtTime(0.2, now);
+        master.connect(audioCtx.destination);
+
+        if (type === 'click') {
+          const osc = audioCtx.createOscillator();
+          const g = audioCtx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(1400, now);
+          osc.frequency.exponentialRampToValueAtTime(700, now + 0.04);
+          g.gain.setValueAtTime(0.3, now);
+          g.gain.exponentialRampToValueAtTime(0.001, now + 0.04);
+          osc.connect(g); g.connect(master);
+          osc.start(now); osc.stop(now + 0.05);
+        } else if (type === 'laser') {
+          const osc = audioCtx.createOscillator();
+          const g = audioCtx.createGain();
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(2400, now);
+          osc.frequency.exponentialRampToValueAtTime(300, now + 0.12);
+          g.gain.setValueAtTime(0.25, now);
+          g.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+          osc.connect(g); g.connect(master);
+          osc.start(now); osc.stop(now + 0.13);
+        } else if (type === 'checkout') {
+          [0, 0.08, 0.16].forEach((d, idx) => {
+            const osc = audioCtx.createOscillator();
+            const g = audioCtx.createGain();
+            const notes = [523.25, 659.25, 1046.5];
+            osc.frequency.setValueAtTime(notes[idx], now + d);
+            g.gain.setValueAtTime(0, now + d);
+            g.gain.linearRampToValueAtTime(0.4, now + d + 0.02);
+            g.gain.exponentialRampToValueAtTime(0.001, now + d + 0.25);
+            osc.connect(g); g.connect(master);
+            osc.start(now + d); osc.stop(now + d + 0.28);
+          });
+        }
+      } catch (e) {}
+    }
+
+    // Initial cells mock
+    const initialCells = [
+      { id: 'A-01', zone: 'Zona A', category: 'Carro', status: 'occupied', plate: 'KLO-892', entryTime: '08:30 AM', duration: '3h 15m', ratePerHour: 4500, currentTotal: 14625 },
+      { id: 'A-02', zone: 'Zona A', category: 'Carro', status: 'free', ratePerHour: 4500 },
+      { id: 'A-03', zone: 'Zona A', category: 'Carro', status: 'occupied', plate: 'NVY-402', entryTime: '10:15 AM', duration: '1h 30m', ratePerHour: 4500, currentTotal: 9000 },
+      { id: 'A-04', zone: 'Zona A', category: 'Carro', status: 'occupied', plate: 'TRK-219', entryTime: '09:00 AM', duration: '2h 45m', ratePerHour: 4500, currentTotal: 13500 },
+      { id: 'A-05', zone: 'Zona A', category: 'Carro', status: 'blocked', maintenanceReason: 'Sensor Óptico', ratePerHour: 4500 },
+      { id: 'A-06', zone: 'Zona A', category: 'Carro', status: 'free', ratePerHour: 4500 },
+      { id: 'A-07', zone: 'Zona A', category: 'Carro', status: 'free', ratePerHour: 4500 },
+      { id: 'A-08', zone: 'Zona A', category: 'Carro', status: 'occupied', plate: 'MKZ-771', entryTime: '11:10 AM', duration: '0h 35m', ratePerHour: 4500, currentTotal: 4500 },
+      { id: 'A-09', zone: 'Zona A', category: 'Carro', status: 'free', ratePerHour: 4500 },
+      { id: 'A-10', zone: 'Zona A', category: 'Carro', status: 'free', ratePerHour: 4500 },
+      { id: 'B-01', zone: 'Zona B', category: 'Moto', status: 'occupied', plate: 'MTR-411', entryTime: '08:45 AM', duration: '3h 00m', ratePerHour: 2200, currentTotal: 6600 },
+      { id: 'B-02', zone: 'Zona B', category: 'Moto', status: 'free', ratePerHour: 2200 },
+      { id: 'B-03', zone: 'Zona B', category: 'Moto', status: 'occupied', plate: 'XYZ-908', entryTime: '09:30 AM', duration: '2h 15m', ratePerHour: 2200, currentTotal: 4950 },
+      { id: 'B-04', zone: 'Zona B', category: 'Moto', status: 'free', ratePerHour: 2200 },
+      { id: 'B-05', zone: 'Zona B', category: 'Moto', status: 'free', ratePerHour: 2200 },
+    ];
+
+    function App() {
+      // Role & User Identity State
+      const [userRole, setUserRole] = useState(null);
+      const [currentUser, setCurrentUser] = useState(null);
+      const [showRoleModal, setShowRoleModal] = useState(true);
+      const [selectedRoleForAuth, setSelectedRoleForAuth] = useState(null);
+
+      // Auth Inputs for Cliente
+      const [clientAuthDoc, setClientAuthDoc] = useState('');
+      const [clientAuthName, setClientAuthName] = useState('');
+      const [clientAuthPlate, setClientAuthPlate] = useState('');
+      const [clientAuthPhone, setClientAuthPhone] = useState('');
+
+      // Auth Inputs for Operador
+      const [opAuthBadge, setOpAuthBadge] = useState('');
+      const [opAuthName, setOpAuthName] = useState('');
+      const [opAuthPin, setOpAuthPin] = useState('');
+      const [opAuthShift, setOpAuthShift] = useState('Turno Mañana [06:00 - 14:00]');
+
+      // Auth Inputs for Administrador
+      const [adminAuthUser, setAdminAuthUser] = useState('');
+      const [adminAuthKey, setAdminAuthKey] = useState('');
+      const [adminAuthOtp, setAdminAuthOtp] = useState('');
+
+      const [activeView, setActiveView] = useState('portal-cliente');
+      const [cells, setCells] = useState(() => {
+        try {
+          const saved = localStorage.getItem('parkflow_cells');
+          if (saved) return JSON.parse(saved);
+        } catch(e) {}
+        return initialCells;
+      });
+      const [time, setTime] = useState(new Date());
+      const [selectedCell, setSelectedCell] = useState(null);
+      const [isXamppOpen, setIsXamppOpen] = useState(false);
+      const [toast, setToast] = useState(null);
+
+      // Real-time Live Event Telemetry State (Synchronized via localStorage & cross-tab)
+      const [lastLiveEvent, setLastLiveEvent] = useState(() => {
+        try {
+          const saved = localStorage.getItem('parkflow_last_event');
+          return saved ? JSON.parse(saved) : null;
+        } catch(e) { return null; }
+      });
+
+      // Administrator Live Sales Charts State ('daily' | 'monthly')
+      const [salesChartTab, setSalesChartTab] = useState('daily');
+      const [chartHoverInfo, setChartHoverInfo] = useState(null);
+
+      // Client portal states
+      const [clientSelectedSlot, setClientSelectedSlot] = useState('A-02');
+      const [clientPlate, setClientPlate] = useState('');
+      const [clientVehicleType, setClientVehicleType] = useState('Carro');
+      const [clientIssuedTicket, setClientIssuedTicket] = useState(null);
+      const [clientLookupPlate, setClientLookupPlate] = useState('');
+      const [clientPaymentSuccess, setClientPaymentSuccess] = useState(false);
+
+      // Salida y Cobro states
+      const [searchQuery, setSearchQuery] = useState('KLO-892');
+      const [paymentMethod, setPaymentMethod] = useState('cash');
+      const [receivedAmount, setReceivedAmount] = useState(20000);
+      const [checkoutSuccess, setCheckoutSuccess] = useState(false);
+      const [secondsTicking, setSecondsTicking] = useState(25);
+
+      // Tarifas states
+      const [criticalThreshold, setCriticalThreshold] = useState(90);
+      const [warningThreshold, setWarningThreshold] = useState(75);
+      const [simulatedAforo, setSimulatedAforo] = useState(null);
+      const [soundType, setSoundType] = useState('alarm');
+      const [isTestingAudio, setIsTestingAudio] = useState(false);
+
+      // Registro Operador states
+      const [regPlate, setRegPlate] = useState('');
+      const [regCat, setRegCat] = useState('Carro');
+
+      useEffect(() => {
+        const t = setInterval(() => {
+          setTime(new Date());
+          setSecondsTicking(s => (s + 1) % 60);
+        }, 1000);
+
+        // Cross-tab and real-time storage listener
+        const onStorage = (e) => {
+          if (e.key === 'parkflow_cells' && e.newValue) {
+            try { setCells(JSON.parse(e.newValue)); } catch(err) {}
+          }
+          if (e.key === 'parkflow_last_event' && e.newValue) {
+            try {
+              const ev = JSON.parse(e.newValue);
+              setLastLiveEvent(ev);
+              playCyberAudio('laser');
+              showToast(`📡 TELEMETRÍA EN VIVO: El cliente ${ev.driver} (${ev.plate}) ocupó la bahía ${ev.cellId}`, 'info');
+            } catch(err) {}
+          }
+        };
+        window.addEventListener('storage', onStorage);
+
+        return () => {
+          clearInterval(t);
+          window.removeEventListener('storage', onStorage);
+        };
+      }, []);
+
+      const showToast = (msg, type = 'info') => {
+        setToast({ msg, type });
+        setTimeout(() => setToast(null), 3000);
+      };
+
+      // Fill demo credentials
+      const fillDemoCredentials = (role) => {
+        playCyberAudio('click');
+        if (role === 'cliente') {
+          setClientAuthDoc('1020304050');
+          setClientAuthName('Alejandro Vélez');
+          setClientAuthPlate('KLO-892');
+          setClientAuthPhone('310 987 6543');
+        } else if (role === 'operador') {
+          setOpAuthBadge('OP-418');
+          setOpAuthName('Carlos Rojas');
+          setOpAuthPin('4180');
+          setOpAuthShift('Turno Mañana [06:00 - 14:00]');
+        } else if (role === 'administrador') {
+          setAdminAuthUser('admin.master');
+          setAdminAuthKey('••••••••••••');
+          setAdminAuthOtp('892-411');
+        }
+      };
+
+      // Submit Auth
+      const handleAuthenticate = (e) => {
+        if (e) e.preventDefault();
+        playCyberAudio('checkout');
+
+        if (selectedRoleForAuth === 'cliente') {
+          const doc = clientAuthDoc.trim() || '1020304050';
+          const name = clientAuthName.trim() || 'Alejandro Vélez';
+          const plate = (clientAuthPlate.trim() || 'KLO-892').toUpperCase();
+          const phone = clientAuthPhone.trim() || '310 987 6543';
+
+          const user = {
+            role: 'cliente',
+            id: doc,
+            name: name,
+            plate: plate,
+            phone: phone,
+            balance: 50000,
+            points: 420,
+            loginTime: new Date().toLocaleTimeString(),
+          };
+          setCurrentUser(user);
+          setUserRole('cliente');
+          setClientPlate(plate);
+          setClientLookupPlate(plate);
+          setShowRoleModal(false);
+          setSelectedRoleForAuth(null);
+          setActiveView('portal-cliente');
+          showToast(`¡Bienvenido Conductor ${name}! Sesión segura iniciada.`, 'success');
+        } else if (selectedRoleForAuth === 'operador') {
+          const badge = opAuthBadge.trim() || 'OP-418';
+          const name = opAuthName.trim() || 'Carlos Rojas';
+
+          const user = {
+            role: 'operador',
+            id: badge,
+            badge: badge,
+            name: name,
+            shift: opAuthShift,
+            booth: 'Taquilla Norte 01',
+            loginTime: new Date().toLocaleTimeString(),
+          };
+          setCurrentUser(user);
+          setUserRole('operador');
+          setShowRoleModal(false);
+          setSelectedRoleForAuth(null);
+          setActiveView('panel-operativo');
+          showToast(`Turno de Operador activo: ${name} [${badge}]`, 'info');
+        } else if (selectedRoleForAuth === 'administrador') {
+          const user = {
+            role: 'administrador',
+            id: adminAuthUser.trim() || 'admin.master',
+            name: 'Ing. Valderrama',
+            level: 'NIVEL 4 // ROOT MASTER',
+            loginTime: new Date().toLocaleTimeString(),
+          };
+          setCurrentUser(user);
+          setUserRole('administrador');
+          setShowRoleModal(false);
+          setSelectedRoleForAuth(null);
+          setActiveView('panel-operativo');
+          showToast(`Acceso Maestro Verificado: Ing. Valderrama`, 'success');
+        }
+      };
+
+      // Logout
+      const handleLogout = () => {
+        playCyberAudio('laser');
+        setCurrentUser(null);
+        setUserRole(null);
+        setSelectedRoleForAuth(null);
+        setShowRoleModal(true);
+        setActiveView('portal-cliente');
+        showToast('Sesión cerrada con éxito', 'info');
+      };
+
+      const selectRole = (role) => {
+        playCyberAudio('click');
+        setSelectedRoleForAuth(role);
+      };
+
+      const occupiedCount = cells.filter(c => c.status === 'occupied').length;
+      const totalCells = 50;
+      const currentOccupancy = simulatedAforo !== null ? simulatedAforo : Math.round((occupiedCount / totalCells) * 100);
+
+      const handleNav = (v) => {
+        // Strict Security Check for Cliente
+        if (userRole === 'cliente') {
+          const clientAllowed = ['portal-cliente', 'consulta-pago', 'mi-perfil-cliente'];
+          if (!clientAllowed.includes(v)) {
+            playCyberAudio('laser');
+            showToast('ACCESO DENEGADO // Módulos internos restringidos a personal de parqueadero', 'error');
+            return;
+          }
+        }
+        // Strict Security Check for Operador
+        if (userRole === 'operador') {
+          const opRestricted = ['tarifas-y-celdas', 'reportes-y-auditoria'];
+          if (opRestricted.includes(v)) {
+            playCyberAudio('laser');
+            showToast('RESTRICCIÓN // Módulo exclusivo para Administrador Global', 'warning');
+            return;
+          }
+        }
+        playCyberAudio('click');
+        setActiveView(v);
+      };
+
+      // Client Occupy Action
+      const handleClientOccupy = (e) => {
+        e.preventDefault();
+        if (!clientPlate || clientPlate.length < 3) {
+          showToast('Por favor ingrese su número de placa', 'warning');
+          return;
+        }
+        if (!clientSelectedSlot) {
+          showToast('Seleccione un puesto libre en el mapa', 'warning');
+          return;
+        }
+        playCyberAudio('checkout');
+        const rate = clientVehicleType === 'Moto' ? 2200 : clientVehicleType === 'Camioneta' ? 6000 : 4500;
+        const cleanPlate = clientPlate.trim().toUpperCase();
+        const driverName = currentUser?.name || clientAuthName || 'Alejandro Vélez';
+        const driverDoc = currentUser?.id || clientAuthDoc || '1020304050';
+        const driverPhone = currentUser?.phone || clientAuthPhone || '310 987 6543';
+        const timeStr = time.toLocaleTimeString();
+
+        const newTicket = {
+          ticketId: `#PK-CLI-${Math.floor(1000 + Math.random() * 9000)}`,
+          plate: cleanPlate,
+          cellId: clientSelectedSlot,
+          category: clientVehicleType,
+          entryTime: timeStr,
+          ratePerHour: rate,
+          driverName: driverName,
+          driverDoc: driverDoc,
+          driverPhone: driverPhone,
+        };
+
+        const updatedCells = cells.map(c => c.id === clientSelectedSlot ? {
+          ...c,
+          status: 'occupied',
+          plate: cleanPlate,
+          entryTime: timeStr,
+          duration: '0h 01m',
+          currentTotal: rate,
+          ratePerHour: rate,
+          driverName: driverName,
+          driverDoc: driverDoc,
+          driverPhone: driverPhone,
+          ticketId: newTicket.ticketId,
+          isClientAutoOccupied: true,
+          occupiedTimestamp: Date.now(),
+        } : c);
+
+        setCells(updatedCells);
+        
+        const evData = {
+          cellId: clientSelectedSlot,
+          plate: cleanPlate,
+          driver: driverName,
+          driverDoc: driverDoc,
+          ticketId: newTicket.ticketId,
+          category: clientVehicleType,
+          time: timeStr,
+          timestamp: Date.now(),
+        };
+        setLastLiveEvent(evData);
+
+        try {
+          localStorage.setItem('parkflow_cells', JSON.stringify(updatedCells));
+          localStorage.setItem('parkflow_last_event', JSON.stringify(evData));
+        } catch(err) {}
+
+        setClientIssuedTicket(newTicket);
+        showToast(`¡Puesto ${clientSelectedSlot} asignado exitosamente! Ticket ${newTicket.ticketId} emitido`, 'success');
+      };
+
+      // Client Checkout Simulation
+      const handleClientPay = (plate) => {
+        playCyberAudio('checkout');
+        setClientPaymentSuccess(true);
+        const updated = cells.map(c => c.plate === plate ? { ...c, status: 'free', plate: undefined, driverName: undefined, isClientAutoOccupied: undefined } : c);
+        setCells(updated);
+        try { localStorage.setItem('parkflow_cells', JSON.stringify(updated)); } catch(e) {}
+        showToast('¡Pago en línea completado! 15 min de tolerancia para salir.', 'success');
+      };
+
+      const handleConfirmPayment = () => {
+        playCyberAudio('checkout');
+        setCheckoutSuccess(true);
+        const updated = cells.map(c => c.id === 'A-01' ? { ...c, status: 'free', plate: undefined, duration: undefined, driverName: undefined, isClientAutoOccupied: undefined } : c);
+        setCells(updated);
+        try { localStorage.setItem('parkflow_cells', JSON.stringify(updated)); } catch(e) {}
+        showToast('¡Pago liquidado! Celda A-01 liberada y barrera abierta.', 'success');
+      };
+
+      const handleRegisterEntry = (e) => {
+        e.preventDefault();
+        if (!regPlate || regPlate.length < 3) {
+          showToast('Ingrese una placa válida', 'warning');
+          return;
+        }
+        playCyberAudio('checkout');
+        const freeCell = cells.find(c => c.status === 'free');
+        if (freeCell) {
+          setCells(prev => prev.map(c => c.id === freeCell.id ? { ...c, status: 'occupied', plate: regPlate, entryTime: '12:40 PM', duration: '0h 01m', currentTotal: 4500 } : c));
+          showToast(`Vehículo ${regPlate} asignado a celda ${freeCell.id}`, 'success');
+          setRegPlate('');
+        }
+      };
+
+      // Filtered navigation based on Role
+      const getNavItems = () => {
+        if (userRole === 'cliente') {
+          return [
+            { id: 'portal-cliente', label: 'Elegir Mi Puesto', sub: 'Mapa & Auto-Ticket', icon: 'local_parking' },
+            { id: 'consulta-pago', label: 'Mi Permanencia', sub: 'Consultar & Pagar Online', icon: 'payments' },
+          ];
+        }
+        if (userRole === 'operador') {
+          return [
+            { id: 'panel-operativo', label: 'Panel Operativo', sub: 'HUD Telemetría 3D', icon: 'grid_view' },
+            { id: 'registro-de-entrada', label: 'Registro Entrada', sub: 'Escáner Óptico LPR', icon: 'login' },
+            { id: 'salida-y-cobro', label: 'Salida y Cobro', sub: 'Liquidación Taquilla', icon: 'point_of_sale' },
+          ];
+        }
+        // Administrador gets all!
+        return [
+          { id: 'panel-operativo', label: 'Panel Operativo', sub: 'HUD Telemetría 3D', icon: 'grid_view' },
+          { id: 'portal-cliente', label: 'Portal Cliente', sub: 'Vista Conductor', icon: 'person' },
+          { id: 'registro-de-entrada', label: 'Registro Entrada', sub: 'Escáner Óptico LPR', icon: 'login' },
+          { id: 'salida-y-cobro', label: 'Salida y Cobro', sub: 'Liquidación Quantum', icon: 'point_of_sale' },
+          { id: 'tarifas-y-celdas', label: 'Tarifas y Celdas', sub: 'Matrices de Control', icon: 'tune' },
+          { id: 'reportes-y-auditoria', label: 'Reportes', sub: 'Ledger Blockchain', icon: 'analytics' },
+        ];
+      };
+
+      return (
+        <div className="min-h-screen flex text-slate-100 relative">
+          
+          {/* ── SIDEBAR ── */}
+          <aside className="fixed left-0 top-0 h-full w-64 z-40 flex flex-col border-r border-cyan-500/20" style={{ background: 'linear-gradient(180deg, rgba(2,5,16,0.98) 0%, rgba(4,8,24,0.99) 100%)' }}>
+            <div className="p-5 border-b border-cyan-500/20 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-cyan-500/20 border border-cyan-400 flex items-center justify-center text-cyan-300 shadow-[0_0_15px_rgba(0,240,255,0.4)]">
+                <span className="material-symbols-outlined text-[24px]">electric_bolt</span>
+              </div>
+              <div>
+                <div className="font-hud text-base font-black text-cyan-300 tracking-wider">PARKFLOW</div>
+                <div className="font-mono text-[9px] text-slate-500 flex items-center gap-1 mt-0.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  TELEMETRY OS 2099
+                </div>
+              </div>
+            </div>
+
+            {/* Role Indicator Banner in Sidebar */}
+            <div className="px-4 py-2.5 border-b border-cyan-500/15 flex items-center justify-between font-mono text-xs" style={{ background: 'rgba(0,240,255,0.04)' }}>
+              <span className="text-slate-400 text-[10px] uppercase">Rol Activo:</span>
+              <span className={`px-2 py-0.5 rounded text-[10px] font-hud font-bold border ${
+                userRole === 'cliente' ? 'bg-emerald-500/15 border-emerald-400 text-emerald-300' :
+                userRole === 'operador' ? 'bg-violet-500/15 border-violet-400 text-violet-300' :
+                'bg-cyan-500/15 border-cyan-400 text-cyan-300'
+              }`}>
+                {userRole ? userRole.toUpperCase() : 'SELECCIONAR'}
+              </span>
+            </div>
+
+            <div className="px-4 py-2 border-b border-cyan-500/15 flex items-center justify-between font-mono text-xs">
+              <span className="text-cyan-400 font-bold tracking-widest">{time.toLocaleTimeString()}</span>
+              <span className="px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-300 border border-cyan-500/30 text-[9px] font-bold">SQL LIVE</span>
+            </div>
+
+            {/* Radar Occupancy Module */}
+            <div className="p-4">
+              <div className="p-3.5 rounded-xl border border-cyan-500/30 hud-corners" style={{ background: 'rgba(0,20,40,0.5)' }}>
+                <div className="flex items-center justify-between text-[10px] font-hud text-cyan-300 font-bold mb-1">
+                  <span>ESTADO DE AFORO</span>
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                </div>
+                <div className="flex items-baseline gap-1 my-1">
+                  <span className="font-hud text-3xl font-black text-cyan-300 glow-text-cyan">{currentOccupancy}</span>
+                  <span className="font-hud text-sm text-cyan-500">%</span>
+                  <span className="font-mono text-[10px] text-slate-500 ml-auto">{occupiedCount}/{totalCells}</span>
+                </div>
+                <div className="w-full bg-black/60 rounded-full h-2 overflow-hidden border border-cyan-500/30">
+                  <div className="h-full bg-gradient-to-r from-cyan-400 to-emerald-400" style={{ width: `${currentOccupancy}%` }} />
+                </div>
+              </div>
+            </div>
+
+            {/* Dynamic Nav Menu filtered by Role */}
+            <nav className="flex flex-col gap-1.5 px-3 flex-1 overflow-y-auto">
+              {getNavItems().map(item => (
+                <button
+                  key={item.id}
+                  onClick={() => handleNav(item.id)}
+                  className={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-left transition-all ${
+                    activeView === item.id
+                      ? 'bg-cyan-500/20 border border-cyan-400 text-cyan-200 shadow-[0_0_15px_rgba(0,240,255,0.3)]'
+                      : 'text-slate-400 hover:text-white hover:bg-white/5 border border-transparent'
+                  }`}
+                >
+                  <span className="material-symbols-outlined text-[20px]">{item.icon}</span>
+                  <div className="flex flex-col leading-tight">
+                    <span className="font-hud text-[11px] font-bold">{item.label}</span>
+                    <span className="font-mono text-[9px] text-slate-500">{item.sub}</span>
+                  </div>
+                </button>
+              ))}
+              {userRole === 'cliente' && (
+                <div className="mt-3 p-3 rounded-xl border border-emerald-500/30 bg-emerald-950/25 text-[10px] font-mono">
+                  <div className="flex items-center gap-1.5 text-emerald-400 font-bold mb-1">
+                    <span className="material-symbols-outlined text-[15px]">verified_user</span>
+                    <span>PERFIL PROTEGIDO</span>
+                  </div>
+                  <p className="text-[9px] text-slate-400 leading-tight">
+                    Acceso de conductor aislado de la red interna de taquillas, cobros y servidores.
+                  </p>
+                </div>
+              )}
+            </nav>
+
+            {/* Bottom Role Switch & Logout Buttons */}
+            <div className="p-3 border-t border-cyan-500/20 flex flex-col gap-2">
+              <button
+                onClick={() => { playCyberAudio('click'); setShowRoleModal(true); }}
+                className="w-full py-2 px-3 rounded-xl font-hud text-[10px] font-bold tracking-wider text-slate-300 hover:text-white bg-white/5 hover:bg-cyan-500/20 border border-white/10 hover:border-cyan-400 transition-all flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-[16px] text-cyan-400">switch_account</span>
+                <span>CAMBIAR DE ROL</span>
+              </button>
+
+              {currentUser && (
+                <button
+                  onClick={handleLogout}
+                  className="w-full py-2 px-3 rounded-xl font-hud text-[10px] font-bold tracking-wider text-rose-300 hover:text-white bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 hover:border-rose-400 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <span className="material-symbols-outlined text-[16px] text-rose-400">logout</span>
+                  <span>CERRAR SESIÓN</span>
+                </button>
+              )}
+            </div>
+          </aside>
+
+          {/* ── TOP HEADER ── */}
+          <header className="fixed top-0 left-64 right-0 h-16 z-30 flex items-center justify-between px-6 border-b border-cyan-500/20 backdrop-blur-md" style={{ background: 'rgba(2,5,16,0.95)' }}>
+            <div className="flex items-center gap-3">
+              {userRole === 'cliente' ? (
+                <div className="flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-mono font-bold border border-emerald-500/40 bg-emerald-500/10 text-emerald-300 shadow-[0_0_12px_rgba(0,255,157,0.2)]">
+                  <span className="material-symbols-outlined text-[14px]">verified_user</span>
+                  <span>ZONA CLIENTE SEGURA // AISLADA</span>
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-hud font-bold border border-emerald-500/40 bg-emerald-500/10 text-emerald-300 shadow-[0_0_12px_rgba(0,255,157,0.2)]">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                    <span>SISTEMA NOMINAL</span>
+                  </div>
+                  
+                  <button onClick={() => { playCyberAudio('click'); setIsXamppOpen(true); }} className="flex items-center gap-1.5 px-3 py-1 rounded-xl font-mono text-[10px] text-cyan-300 border border-cyan-500/30 bg-cyan-500/10 hover:bg-cyan-500/20 transition-all cursor-pointer">
+                    <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
+                    <span>MySQL :3306 [XAMPP]</span>
+                  </button>
+                </>
+              )}
+            </div>
+
+            {/* Top Right: User Profile & Actions */}
+            <div className="flex items-center gap-3">
+              {currentUser && (
+                <div className={`flex items-center gap-2.5 px-3 py-1.5 rounded-xl border font-mono text-xs ${
+                  userRole === 'cliente' ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300' :
+                  userRole === 'operador' ? 'bg-violet-500/10 border-violet-500/30 text-violet-300' :
+                  'bg-cyan-500/10 border-cyan-500/30 text-cyan-300'
+                }`}>
+                  <span className="material-symbols-outlined text-[18px]">
+                    {userRole === 'cliente' ? 'directions_car' : userRole === 'operador' ? 'badge' : 'admin_panel_settings'}
+                  </span>
+                  <div className="flex flex-col text-left leading-tight">
+                    <span className="font-hud text-[11px] font-bold text-white">{currentUser.name}</span>
+                    <span className="text-[9px] opacity-80">
+                      {userRole === 'cliente' ? `CC: ${currentUser.id} · ${currentUser.plate}` :
+                       userRole === 'operador' ? `${currentUser.badge} · ${currentUser.shift?.split(' ')[1] || 'Turno'}` :
+                       'ROOT // MASTER'}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={() => { playCyberAudio('click'); setShowRoleModal(true); }}
+                className="px-3 py-1.5 rounded-xl font-hud text-[10px] font-bold text-slate-300 hover:text-white bg-white/5 hover:bg-cyan-500/20 border border-white/10 hover:border-cyan-400 transition-all flex items-center gap-1.5 cursor-pointer"
+                title="Cambiar de Rol"
+              >
+                <span className="material-symbols-outlined text-[15px] text-cyan-400">switch_account</span>
+                <span className="hidden sm:inline">CAMBIAR ROL</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="px-3 py-1.5 rounded-xl font-hud text-[10px] font-bold text-rose-300 hover:text-white bg-rose-500/10 hover:bg-rose-500/25 border border-rose-500/30 hover:border-rose-400 transition-all flex items-center gap-1.5 cursor-pointer"
+                title="Cerrar Sesión Segura"
+              >
+                <span className="material-symbols-outlined text-[15px] text-rose-400">logout</span>
+                <span className="hidden sm:inline">SALIR</span>
+              </button>
+            </div>
+          </header>
+
+          {/* ── MAIN CONTENT AREA ── */}
+          <main className="ml-64 pt-20 pb-16 px-6 flex-1 flex flex-col relative z-10">
+            
+            {/* VIEW: PORTAL DEL CLIENTE (EL CLIENTE ELIGE QUÉ PUESTO OCUPAR) */}
+            {(activeView === 'portal-cliente' || activeView === 'consulta-pago') && (
+              <div className="flex flex-col gap-6 animate-fadeIn max-w-5xl mx-auto w-full">
+                
+                {/* Header Banner */}
+                <div className="p-6 rounded-2xl border border-emerald-500/30 relative overflow-hidden" style={{ background: 'linear-gradient(135deg, rgba(4,24,18,0.92) 0%, rgba(2,10,14,0.96) 100%)' }}>
+                  <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-emerald-400 to-transparent" />
+                  <div className="font-mono text-xs text-emerald-400 uppercase tracking-widest mb-1">
+                    // PORTAL DE AUTOGESTIÓN // BIENVENIDO CONDUCTOR
+                  </div>
+                  <h1 className="font-hud text-2xl md:text-3xl font-black text-white tracking-wider flex items-center gap-3">
+                    <span>SELECCIÓN DE PUESTO Y AUTO-TICKET</span>
+                    <span className="px-2.5 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                      CLIENTE
+                    </span>
+                  </h1>
+                  <p className="font-sans text-xs text-slate-400 mt-1">
+                    Mira las bahías disponibles en tiempo real, elige el puesto donde deseas parquear tu vehículo y genera tu ticket digital.
+                  </p>
+                </div>
+
+                {/* PASO 1: MAPA DE CELDAS INTERACTIVO */}
+                <div className="p-6 rounded-2xl border border-cyan-500/25 flex flex-col gap-4" style={{ background: 'rgba(6,12,32,0.88)' }}>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-cyan-500/20">
+                    <div>
+                      <span className="font-hud text-sm font-bold text-white flex items-center gap-2">
+                        <span className="w-5 h-5 rounded-full bg-cyan-400 text-black text-xs font-black flex items-center justify-center">1</span>
+                        ELIGE TU BAHÍA DISPONIBLE EN EL MAPA:
+                      </span>
+                      <p className="font-mono text-[11px] text-slate-400 mt-0.5">Haz clic sobre cualquier celda verde para seleccionarla</p>
+                    </div>
+                    <div className="flex items-center gap-3 font-mono text-xs">
+                      <span className="flex items-center gap-1.5 text-emerald-400"><span className="w-2.5 h-2.5 rounded-full bg-emerald-400" />Libre</span>
+                      <span className="flex items-center gap-1.5 text-rose-400"><span className="w-2.5 h-2.5 rounded-full bg-rose-500" />Ocupado</span>
+                    </div>
+                  </div>
+
+                  {/* Grid of Bays for Client */}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 pt-2">
+                    {cells.map(c => {
+                      const isFree = c.status === 'free';
+                      const isSelected = clientSelectedSlot === c.id;
+                      return (
+                        <button
+                          key={c.id}
+                          disabled={!isFree}
+                          type="button"
+                          onClick={() => {
+                            if (isFree) {
+                              playCyberAudio('click');
+                              setClientSelectedSlot(c.id);
+                              setClientVehicleType(c.category);
+                            }
+                          }}
+                          className={`p-3.5 rounded-xl border flex flex-col justify-between items-center text-center transition-all min-h-[105px] ${
+                            !isFree
+                              ? 'bg-rose-950/30 border-rose-500/30 opacity-60 cursor-not-allowed'
+                              : isSelected
+                              ? 'bg-cyan-500/25 border-cyan-400 shadow-[0_0_20px_rgba(0,240,255,0.4)] scale-105 cursor-pointer ring-2 ring-cyan-400'
+                              : 'bg-emerald-950/25 border-emerald-500/35 hover:border-cyan-400 hover:scale-102 cursor-pointer'
+                          }`}
+                        >
+                          <div className="w-full flex justify-between font-mono text-[11px]">
+                            <span className="font-hud font-bold text-white">{c.id}</span>
+                            <span className="text-[10px] text-slate-400">{c.zone}</span>
+                          </div>
+                          
+                          <span className={`material-symbols-outlined text-[28px] my-1 ${
+                            isSelected ? 'text-cyan-300 animate-bounce' : isFree ? 'text-emerald-400' : 'text-rose-400'
+                          }`}>
+                            {isSelected ? 'task_alt' : isFree ? 'local_parking' : 'directions_car'}
+                          </span>
+
+                          <div className="font-mono text-[10px] font-bold">
+                            {isSelected ? (
+                              <span className="text-cyan-300 glow-text-cyan font-black">ELEGIDO</span>
+                            ) : isFree ? (
+                              <span className="text-emerald-300">DISPONIBLE</span>
+                            ) : (
+                              <span className="text-rose-400">{c.plate || 'OCUPADO'}</span>
+                            )}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* PASO 2: FORMULARIO DE REGISTRO & AUTO-TICKET */}
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                  
+                  {/* Left: Input details */}
+                  <form onSubmit={handleClientOccupy} className="lg:col-span-7 p-6 rounded-2xl border border-cyan-500/25 flex flex-col gap-4" style={{ background: 'rgba(6,12,32,0.88)' }}>
+                    <div className="font-hud text-sm font-bold text-white flex items-center gap-2 pb-2 border-b border-cyan-500/20">
+                      <span className="w-5 h-5 rounded-full bg-cyan-400 text-black text-xs font-black flex items-center justify-center">2</span>
+                      REGISTRA TU PLACA & TARIFA:
+                    </div>
+
+                    <div className="p-3.5 rounded-xl border border-cyan-500/30 bg-cyan-950/30 flex items-center justify-between">
+                      <div className="flex flex-col">
+                        <span className="font-mono text-[10px] text-slate-400 uppercase">Puesto Seleccionado:</span>
+                        <span className="font-hud text-xl font-black text-cyan-300">{clientSelectedSlot}</span>
+                      </div>
+                      <span className="px-3 py-1 rounded bg-emerald-500/20 text-emerald-300 font-mono text-xs font-bold border border-emerald-500/40">
+                        {clientVehicleType === 'Moto' ? 'Sector Motos' : 'Sector Principal'}
+                      </span>
+                    </div>
+
+                    <div>
+                      <label className="font-mono text-xs text-slate-400 uppercase block mb-1.5 font-bold">
+                        Tu Placa / Matrícula Vehicular:
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="EJ: KLO-892"
+                        maxLength={7}
+                        value={clientPlate}
+                        onChange={e => setClientPlate(e.target.value.toUpperCase())}
+                        required
+                        className="w-full h-13 rounded-xl px-4 font-mono text-2xl font-black tracking-widest text-center text-cyan-300 border border-cyan-500/40 bg-black/60 focus:outline-none focus:border-cyan-400"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="font-mono text-xs text-slate-400 uppercase block mb-1.5 font-bold">
+                        Categoría de Vehículo:
+                      </label>
+                      <div className="grid grid-cols-3 gap-2">
+                        {[
+                          { type: 'Carro', label: 'Carro', rate: '$4.500/h', icon: 'directions_car' },
+                          { type: 'Moto', label: 'Moto', rate: '$2.200/h', icon: 'two_wheeler' },
+                          { type: 'Camioneta', label: 'Camioneta', rate: '$6.000/h', icon: 'airport_shuttle' },
+                        ].map(c => (
+                          <button
+                            key={c.type}
+                            type="button"
+                            onClick={() => { playCyberAudio('click'); setClientVehicleType(c.type); }}
+                            className={`p-2.5 rounded-xl border text-center transition-all cursor-pointer ${
+                              clientVehicleType === c.type
+                                ? 'bg-cyan-500/25 border-cyan-400 text-cyan-200 shadow-[0_0_12px_rgba(0,240,255,0.3)]'
+                                : 'bg-black/40 border-white/10 text-slate-400 hover:text-white'
+                            }`}
+                          >
+                            <span className="material-symbols-outlined text-[20px] block mx-auto">{c.icon}</span>
+                            <div className="font-hud text-xs font-bold mt-0.5">{c.label}</div>
+                            <div className="font-mono text-[10px] text-emerald-400 font-semibold">{c.rate}</div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <button
+                      type="submit"
+                      className="mt-2 h-13 rounded-xl font-hud text-xs font-black tracking-wider cyber-btn-emerald cursor-pointer shadow-[0_0_20px_rgba(0,255,157,0.3)]"
+                    >
+                      OCUPAR PUESTO {clientSelectedSlot} & GENERAR TICKET
+                    </button>
+                  </form>
+
+                  {/* Right: Issued Digital Ticket Preview */}
+                  <div className="lg:col-span-5 flex flex-col gap-4">
+                    {clientIssuedTicket ? (
+                      <div className="p-6 rounded-2xl border border-emerald-500/40 relative overflow-hidden flex flex-col gap-4" style={{
+                        background: 'linear-gradient(160deg, rgba(4,24,18,0.98) 0%, rgba(2,10,14,0.99) 100%)',
+                        boxShadow: '0 0 40px rgba(0,255,157,0.25)',
+                      }}>
+                        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-emerald-400 to-transparent" />
+                        
+                        <div className="flex items-center justify-between pb-3 border-b border-emerald-500/30">
+                          <div>
+                            <span className="font-mono text-[10px] text-emerald-400 block font-bold">TICKET DIGITAL ACTIVO</span>
+                            <span className="font-hud text-sm font-black text-white">{clientIssuedTicket.ticketId}</span>
+                          </div>
+                          <span className="material-symbols-outlined text-emerald-400 text-[28px] animate-pulse">qr_code_2</span>
+                        </div>
+
+                        <div className="plate-bezel px-4 py-2 rounded-xl text-center">
+                          <span className="font-mono text-3xl font-black text-yellow-300 tracking-widest">{clientIssuedTicket.plate}</span>
+                        </div>
+
+                        <div className="p-3.5 rounded-xl border border-emerald-500/25 bg-black/60 font-mono text-xs flex flex-col gap-2">
+                          <div className="flex justify-between">
+                            <span className="text-slate-400">Puesto Asignado:</span>
+                            <span className="font-bold text-cyan-300 font-hud text-sm">{clientIssuedTicket.cellId}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-slate-400">Hora de Ingreso:</span>
+                            <span className="font-bold text-white">{clientIssuedTicket.entryTime}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-slate-400">Tarifa por Hora:</span>
+                            <span className="font-bold text-emerald-300">${clientIssuedTicket.ratePerHour.toLocaleString('es-CO')} COP</span>
+                          </div>
+                          <div className="flex justify-between border-t border-white/10 pt-1.5 text-slate-300">
+                            <span>Estado de Barrera:</span>
+                            <span className="text-emerald-400 font-bold">HABILITADA (Ingresa)</span>
+                          </div>
+                        </div>
+
+                        <div className="text-center font-mono text-[10px] text-slate-500">
+                          Conserva este ticket digital para pre-pagar o registrar tu salida en la taquilla.
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="p-6 rounded-2xl border border-cyan-500/20 flex flex-col items-center justify-center text-center gap-3 min-h-[300px]" style={{ background: 'rgba(6,12,32,0.6)' }}>
+                        <span className="material-symbols-outlined text-slate-600 text-[48px]">confirmation_number</span>
+                        <span className="font-hud text-xs font-bold text-slate-400">AÚN NO HAS GENERADO TICKET</span>
+                        <p className="font-mono text-[11px] text-slate-500 max-w-xs">
+                          Elige tu puesto en el mapa y presiona el botón verde para obtener tu ticket digital instantáneo.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* PASO 3: CONSULTAR Y PRE-PAGAR EN LÍNEA */}
+                <div className="p-6 rounded-2xl border border-violet-500/30 flex flex-col gap-4" style={{ background: 'rgba(10,8,28,0.85)' }}>
+                  <div className="flex items-center gap-2">
+                    <span className="material-symbols-outlined text-violet-400 text-[24px]">payments</span>
+                    <h2 className="font-hud text-base font-bold text-white tracking-wider">
+                      ¿YA VAS A SALIR? CONSULTA TU PERMANENCIA & PAGA EN LÍNEA
+                    </h2>
+                  </div>
+                  <p className="font-mono text-xs text-slate-400">
+                    Ingresa tu placa para ver cuánto llevas consumido y pagar inmediatamente con QR Nequi/Davi o Tarjeta.
+                  </p>
+
+                  <div className="flex flex-col sm:flex-row gap-3">
+                    <input
+                      type="text"
+                      placeholder="INGRESA TU PLACA (EJ. KLO-892)"
+                      value={clientLookupPlate}
+                      onChange={e => setClientLookupPlate(e.target.value.toUpperCase())}
+                      className="flex-1 h-12 rounded-xl px-4 font-mono text-lg font-bold text-cyan-300 bg-black/60 border border-violet-500/40 focus:outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const target = clientLookupPlate || 'KLO-892';
+                        handleClientPay(target);
+                      }}
+                      className="px-6 h-12 rounded-xl font-hud text-xs font-bold cyber-btn-violet cursor-pointer"
+                    >
+                      CONSULTAR Y PAGAR ONLINE
+                    </button>
+                  </div>
+
+                  {clientPaymentSuccess && (
+                    <div className="p-4 rounded-xl border border-emerald-500/40 bg-emerald-950/40 text-emerald-300 font-mono text-xs flex items-center justify-between animate-fadeIn">
+                      <div className="flex items-center gap-2">
+                        <span className="material-symbols-outlined text-emerald-400">check_circle</span>
+                        <span>¡Pago recibido con éxito! La barrera de salida se elevará al reconocer tu placa. Tienes 15 min de gracia.</span>
+                      </div>
+                      <button onClick={() => setClientPaymentSuccess(false)} className="underline text-xs">Cerrar</button>
+                    </div>
+                  )}
+                </div>
+
+              </div>
+            )}
+
+            {/* ── SECURITY ENFORCEMENT: CLIENT RESTRICTION SHIELD ── */}
+            {userRole === 'cliente' && ['panel-operativo', 'registro-de-entrada', 'salida-y-cobro', 'tarifas-y-celdas', 'reportes-y-auditoria'].includes(activeView) && (
+              <div className="p-8 rounded-3xl border border-rose-500/50 bg-rose-950/30 backdrop-blur-xl flex flex-col items-center text-center gap-5 max-w-2xl mx-auto my-12 animate-fadeIn shadow-[0_0_50px_rgba(255,42,109,0.3)]">
+                <div className="w-16 h-16 rounded-2xl bg-rose-500/20 border border-rose-500 flex items-center justify-center text-rose-400 shadow-[0_0_20px_rgba(255,42,109,0.4)]">
+                  <span className="material-symbols-outlined text-[38px]">gpp_bad</span>
+                </div>
+                <div className="font-mono text-xs text-rose-400 font-bold uppercase tracking-widest">
+                  // PROTOCOLO DE SEGURIDAD 403 // ACCESO DENEGADO
+                </div>
+                <h2 className="font-hud text-2xl font-black text-white">
+                  ÁREA RESTRINGIDA A PERSONAL DE PARQUEADERO
+                </h2>
+                <p className="font-sans text-xs text-slate-300 max-w-md leading-relaxed">
+                  Estimado conductor <strong>{currentUser?.name || 'Cliente'}</strong>: Esta sección contiene controles operativos de barreras, arqueos de taquilla y datos fiscales confidenciales. Por seguridad, tu sesión está aislada y protegida en tu portal de autogestión.
+                </p>
+                <div className="p-4 rounded-xl border border-rose-500/30 bg-black/70 font-mono text-[11px] text-slate-300 text-left w-full space-y-1">
+                  <div>• Tu Identidad: <span className="text-emerald-400 font-bold">{currentUser?.name || 'Conductor'}</span> (CC: {currentUser?.id || 'Registrado'})</div>
+                  <div>• Rol Detectado: <span className="text-emerald-300 font-bold">CLIENTE / CONDUCTOR</span></div>
+                  <div>• Nivel Requerido: <span className="text-rose-400 font-bold">NIVEL 2 OPERADOR / NIVEL 4 ADMINISTRADOR</span></div>
+                  <div>• Estado de Cifrado: <span className="text-cyan-400">Sesión personal protegida contra accesos cruzados</span></div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => { playCyberAudio('click'); setActiveView('portal-cliente'); }}
+                  className="px-6 py-3 rounded-xl font-hud text-xs font-black tracking-wider cyber-btn-emerald cursor-pointer shadow-[0_0_20px_rgba(0,255,157,0.3)]"
+                >
+                  REGRESAR A MI PORTAL DE CONDUCTOR
+                </button>
+              </div>
+            )}
+
+            {/* ── SECURITY ENFORCEMENT: OPERATOR RESTRICTION SHIELD ── */}
+            {userRole === 'operador' && ['tarifas-y-celdas', 'reportes-y-auditoria'].includes(activeView) && (
+              <div className="p-8 rounded-3xl border border-amber-500/50 bg-amber-950/30 backdrop-blur-xl flex flex-col items-center text-center gap-5 max-w-2xl mx-auto my-12 animate-fadeIn shadow-[0_0_50px_rgba(255,183,3,0.3)]">
+                <div className="w-16 h-16 rounded-2xl bg-amber-500/20 border border-amber-400 flex items-center justify-center text-amber-300">
+                  <span className="material-symbols-outlined text-[38px]">lock</span>
+                </div>
+                <div className="font-mono text-xs text-amber-400 font-bold uppercase tracking-widest">
+                  // RESTRICCIÓN DE AUTORIZACIÓN NIVEL 2 //
+                </div>
+                <h2 className="font-hud text-2xl font-black text-white">
+                  MÓDULO EXCLUSIVO DE ADMINISTRADOR GLOBAL
+                </h2>
+                <p className="font-sans text-xs text-slate-300 max-w-md">
+                  Operador <strong>{currentUser?.name || 'Operador'} [{currentUser?.badge || 'OP-418'}]</strong>: No cuentas con privilegios para modificar matrices de tarifas, recalibrar alarmas de aforo ni consultar la auditoría contable SHA-256.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => { playCyberAudio('click'); setActiveView('panel-operativo'); }}
+                  className="px-6 py-3 rounded-xl font-hud text-xs font-black tracking-wider cyber-btn-violet cursor-pointer"
+                >
+                  REGRESAR AL PANEL OPERATIVO
+                </button>
+              </div>
+            )}
+
+            {/* VIEW: MI PERFIL CLIENTE / CONDUCTOR */}
+            {activeView === 'mi-perfil-cliente' && (
+              <div className="flex flex-col gap-6 animate-fadeIn max-w-5xl mx-auto w-full">
+                <div className="p-6 rounded-2xl border border-emerald-500/30 relative overflow-hidden" style={{ background: 'linear-gradient(135deg, rgba(4,24,18,0.92) 0%, rgba(2,10,14,0.96) 100%)' }}>
+                  <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-emerald-400 to-transparent" />
+                  <div className="font-mono text-xs text-emerald-400 uppercase tracking-widest mb-1">
+                    // CREDENCIAL PERSONALIZADA // PERFIL DE CONDUCTOR
+                  </div>
+                  <h1 className="font-hud text-2xl md:text-3xl font-black text-white tracking-wider flex items-center gap-3">
+                    <span>MI PERFIL & FIDELIZACIÓN</span>
+                    <span className="px-2.5 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                      USUARIO VERIFICADO
+                    </span>
+                  </h1>
+                  <p className="font-sans text-xs text-slate-400 mt-1">
+                    Gestión de tus vehículos registrados, saldo en billetera digital y puntos acumulados en ParkFlow 2099.
+                  </p>
+                </div>
+
+                {/* Profile Bento Cards */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  {/* Card 1: Identity Card */}
+                  <div className="p-6 rounded-2xl border border-emerald-500/30 bg-emerald-950/20 flex flex-col justify-between gap-4 relative overflow-hidden">
+                    <div className="flex items-center gap-3">
+                      <div className="w-14 h-14 rounded-2xl bg-emerald-500/20 border border-emerald-400 flex items-center justify-center text-emerald-300 text-3xl">
+                        <span className="material-symbols-outlined text-[34px]">person</span>
+                      </div>
+                      <div>
+                        <div className="font-hud text-lg font-black text-white">{currentUser?.name || 'Alejandro Vélez'}</div>
+                        <div className="font-mono text-xs text-emerald-400 font-bold">CC: {currentUser?.id || '1020304050'}</div>
+                        <div className="font-mono text-[10px] text-slate-400">Tel: {currentUser?.phone || '310 987 6543'}</div>
+                      </div>
+                    </div>
+
+                    <div className="p-3 rounded-xl border border-emerald-500/20 bg-black/50 font-mono text-xs space-y-1.5">
+                      <div className="flex justify-between text-slate-400">
+                        <span>Vehículo Habitual:</span>
+                        <strong className="text-yellow-300">{currentUser?.plate || clientPlate || 'KLO-892'}</strong>
+                      </div>
+                      <div className="flex justify-between text-slate-400">
+                        <span>Nivel de Acceso:</span>
+                        <span className="text-emerald-400 font-bold">Conductor Protegido</span>
+                      </div>
+                      <div className="flex justify-between text-slate-400">
+                        <span>Seguridad:</span>
+                        <span className="text-cyan-400 font-bold">Datos Cifrados AES</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Card 2: Wallet & Balance */}
+                  <div className="p-6 rounded-2xl border border-cyan-500/30 bg-cyan-950/20 flex flex-col justify-between gap-4">
+                    <div>
+                      <div className="flex items-center justify-between text-slate-400 font-mono text-xs mb-1">
+                        <span>BILLETERA VIRTUAL</span>
+                        <span className="material-symbols-outlined text-cyan-400 text-[20px]">account_balance_wallet</span>
+                      </div>
+                      <div className="font-hud text-3xl font-black text-cyan-300 glow-text-cyan">
+                        ${(currentUser?.balance || 50000).toLocaleString('es-CO')} COP
+                      </div>
+                      <p className="font-mono text-[10px] text-slate-400 mt-1">
+                        Saldo prepagado para salidas sin contacto por lectura automática LPR.
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => showToast('Redirigiendo a pasarela PSE / Nequi para recargar $20.000 COP...', 'info')}
+                      className="w-full py-2.5 rounded-xl font-hud text-xs font-black tracking-wider cyber-btn-cyan cursor-pointer"
+                    >
+                      + RECARGAR BILLETERA
+                    </button>
+                  </div>
+
+                  {/* Card 3: Loyalty Points */}
+                  <div className="p-6 rounded-2xl border border-violet-500/30 bg-violet-950/20 flex flex-col justify-between gap-4">
+                    <div>
+                      <div className="flex items-center justify-between text-slate-400 font-mono text-xs mb-1">
+                        <span>CLUB PARKFLOW REWARDS</span>
+                        <span className="material-symbols-outlined text-violet-400 text-[20px]">workspace_premium</span>
+                      </div>
+                      <div className="font-hud text-3xl font-black text-violet-300">
+                        {currentUser?.points || 420} PTS
+                      </div>
+                      <div className="w-full bg-black/60 rounded-full h-2 mt-2 overflow-hidden border border-violet-500/30">
+                        <div className="h-full bg-gradient-to-r from-violet-500 to-cyan-400" style={{ width: '84%' }} />
+                      </div>
+                      <p className="font-mono text-[10px] text-slate-400 mt-2">
+                        Te faltan 80 puntos para redimir 1 hora gratis en tu próximo parqueo.
+                      </p>
+                    </div>
+
+                    <div className="p-2.5 rounded-xl bg-black/40 border border-violet-500/20 font-mono text-[10px] text-slate-300 text-center">
+                      Tier: <strong className="text-violet-400 font-bold">CONDUCTOR PLATINUM 2099</strong>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Active Parking Status Card */}
+                <div className="p-6 rounded-2xl border border-cyan-500/25 flex flex-col gap-4" style={{ background: 'rgba(6,12,32,0.85)' }}>
+                  <div className="font-hud text-sm font-bold text-white flex items-center justify-between pb-2 border-b border-cyan-500/20">
+                    <span className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
+                      ESTADO ACTUAL DE TU VEHÍCULO ({currentUser?.plate || clientPlate || 'KLO-892'})
+                    </span>
+                    <span className="font-mono text-xs text-emerald-400 font-bold">EN PATIO DE PARQUEO</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 font-mono text-xs">
+                    <div className="p-3 rounded-xl bg-black/50 border border-cyan-500/20">
+                      <span className="text-slate-400 text-[10px] block">Bahía Ocupada</span>
+                      <strong className="font-hud text-xl text-cyan-300">{clientSelectedSlot || 'A-01'}</strong>
+                    </div>
+                    <div className="p-3 rounded-xl bg-black/50 border border-cyan-500/20">
+                      <span className="text-slate-400 text-[10px] block">Hora de Entrada</span>
+                      <strong className="font-hud text-base text-white">11:15 AM</strong>
+                    </div>
+                    <div className="p-3 rounded-xl bg-black/50 border border-cyan-500/20">
+                      <span className="text-slate-400 text-[10px] block">Tiempo Acumulado</span>
+                      <strong className="font-hud text-base text-emerald-400">2h 17m</strong>
+                    </div>
+                    <div className="p-3 rounded-xl bg-black/50 border border-cyan-500/20">
+                      <span className="text-slate-400 text-[10px] block">Total Liquidado</span>
+                      <strong className="font-hud text-base text-cyan-300">$13.500 COP</strong>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end gap-3 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => { playCyberAudio('click'); setActiveView('portal-cliente'); }}
+                      className="px-4 py-2 rounded-xl font-hud text-xs text-cyan-300 border border-cyan-500/40 hover:bg-cyan-500/20 cursor-pointer"
+                    >
+                      VER EN MAPA 3D
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { playCyberAudio('click'); setActiveView('consulta-pago'); }}
+                      className="px-5 py-2 rounded-xl font-hud text-xs font-black cyber-btn-violet cursor-pointer"
+                    >
+                      PAGAR EN LÍNEA AHORA
+                    </button>
+                  </div>
+                </div>
+
+              </div>
+            )}
+
+            {/* VIEW: PANEL OPERATIVO (OPERADOR / ADMIN) */}
+            {activeView === 'panel-operativo' && userRole !== 'cliente' && (
+              <div className="flex flex-col gap-6 animate-fadeIn">
+                <div className="p-5 rounded-2xl border border-cyan-500/25 relative overflow-hidden" style={{ background: 'linear-gradient(135deg, rgba(8,16,42,0.92) 0%, rgba(4,8,24,0.96) 100%)' }}>
+                  <div className="font-mono text-xs text-cyan-400 uppercase tracking-widest mb-1">// TELEMETRÍA 3D // VISTA DE TAQUILLA & CONTROL</div>
+                  <h1 className="font-hud text-2xl font-black text-white">PANEL OPERATIVO DE BAHÍAS & MAPA DIGITAL</h1>
+                </div>
+
+                {/* 📡 REAL-TIME LIVE OCCUPANCY BROADCAST BANNER */}
+                {lastLiveEvent && (
+                  <div className="p-4 rounded-2xl border border-emerald-500/40 bg-gradient-to-r from-emerald-950/50 via-cyan-950/40 to-black/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-[0_0_30px_rgba(0,255,157,0.25)] animate-fadeIn">
+                    <div className="flex items-center gap-3">
+                      <span className="relative flex h-3.5 w-3.5 shrink-0">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-emerald-400"></span>
+                      </span>
+                      <div>
+                        <div className="font-hud text-xs font-black text-emerald-300 flex items-center gap-2">
+                          <span>📡 TELEMETRÍA EN TIEMPO REAL // AUTOGESTIÓN CLIENTE</span>
+                          <span className="px-2 py-0.5 rounded text-[9px] font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">EN VIVO</span>
+                        </div>
+                        <p className="font-mono text-xs text-slate-200 mt-0.5">
+                          El cliente <strong className="text-white">{lastLiveEvent.driver}</strong> ocupó la bahía <strong className="text-yellow-300 font-hud text-sm font-black">{lastLiveEvent.cellId}</strong> con vehículo <strong className="text-cyan-300 font-bold">{lastLiveEvent.plate}</strong> · Ticket <span className="text-emerald-400 font-bold">{lastLiveEvent.ticketId}</span> ({lastLiveEvent.time}).
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          playCyberAudio('click');
+                          const targetCell = cells.find(c => c.id === lastLiveEvent.cellId);
+                          if (targetCell) setSelectedCell(targetCell);
+                        }}
+                        className="px-4 py-2 rounded-xl font-hud text-[10px] font-black tracking-wider cyber-btn-cyan cursor-pointer shadow-[0_0_15px_rgba(0,240,255,0.3)] whitespace-nowrap"
+                      >
+                        VER DETALLES CELDA {lastLiveEvent.cellId}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setLastLiveEvent(null)}
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-white"
+                        title="Descartar aviso"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* KPI Metrics */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div className="p-4 rounded-xl border border-cyan-500/30 bg-cyan-950/30 flex justify-between items-center">
+                    <div>
+                      <div className="text-[10px] font-mono text-slate-400 uppercase">Ocupación Actual</div>
+                      <div className="font-mono text-2xl font-black text-cyan-300">{currentOccupancy}%</div>
+                    </div>
+                    <span className="material-symbols-outlined text-cyan-400 text-[32px]">speed</span>
+                  </div>
+                  <div className="p-4 rounded-xl border border-emerald-500/30 bg-emerald-950/30 flex justify-between items-center">
+                    <div>
+                      <div className="text-[10px] font-mono text-slate-400 uppercase">Bahías Disponibles</div>
+                      <div className="font-mono text-2xl font-black text-emerald-300">{totalCells - occupiedCount}</div>
+                    </div>
+                    <span className="material-symbols-outlined text-emerald-400 text-[32px]">check_circle</span>
+                  </div>
+                  <div className="p-4 rounded-xl border border-violet-500/30 bg-violet-950/30 flex justify-between items-center">
+                    <div>
+                      <div className="text-[10px] font-mono text-slate-400 uppercase">Recaudo Estimado Hoy</div>
+                      <div className="font-mono text-2xl font-black text-violet-300">$4.722.000</div>
+                    </div>
+                    <span className="material-symbols-outlined text-violet-400 text-[32px]">attach_money</span>
+                  </div>
+                  <div className="p-4 rounded-xl border border-rose-500/30 bg-rose-950/30 flex justify-between items-center">
+                    <div>
+                      <div className="text-[10px] font-mono text-slate-400 uppercase">Vehículos en Patio</div>
+                      <div className="font-mono text-2xl font-black text-rose-400">{occupiedCount}</div>
+                    </div>
+                    <span className="material-symbols-outlined text-rose-400 text-[32px]">directions_car</span>
+                  </div>
+                </div>
+
+                {/* Cells Grid (Real-Time Digital Map) */}
+                <div className="p-5 rounded-2xl border border-cyan-500/25" style={{ background: 'rgba(6,12,32,0.85)' }}>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3 pb-2 border-b border-cyan-500/20">
+                    <div className="font-hud text-sm font-bold text-white flex items-center gap-2">
+                      <span className="material-symbols-outlined text-cyan-400 text-[20px]">grid_view</span>
+                      <span>MAPA DIGITAL DE BAHÍAS // ACTUALIZACIÓN EN TIEMPO REAL</span>
+                    </div>
+                    <div className="flex items-center gap-3 font-mono text-xs">
+                      <span className="flex items-center gap-1.5 text-emerald-400"><span className="w-2 h-2 rounded-full bg-emerald-400" />Libre</span>
+                      <span className="flex items-center gap-1.5 text-rose-400"><span className="w-2 h-2 rounded-full bg-rose-500" />Ocupado</span>
+                      <span className="flex items-center gap-1.5 text-cyan-300"><span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />Auto-Ticket</span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-8 gap-3">
+                    {cells.map(c => {
+                      const isOcc = c.status === 'occupied';
+                      const isBlk = c.status === 'blocked';
+                      const isNewLive = c.id === lastLiveEvent?.cellId && isOcc;
+                      return (
+                        <button
+                          key={c.id}
+                          onClick={() => { playCyberAudio('click'); setSelectedCell(c); }}
+                          className={`p-3 rounded-xl border flex flex-col justify-between items-center min-h-[105px] transition-all cursor-pointer relative overflow-hidden ${
+                            isNewLive
+                              ? 'bg-rose-950/60 border-emerald-400 ring-2 ring-emerald-400/80 shadow-[0_0_25px_rgba(0,255,157,0.5)] scale-102'
+                              : isOcc
+                              ? 'bg-rose-950/40 border-rose-500/50 shadow-[0_0_15px_rgba(255,42,109,0.2)]'
+                              : isBlk
+                              ? 'bg-amber-950/40 border-amber-500/40'
+                              : 'bg-emerald-950/30 border-emerald-500/30 hover:border-cyan-400 hover:scale-102'
+                          }`}
+                        >
+                          {isNewLive && (
+                            <span className="absolute top-1 right-1 px-1 py-0.2 rounded text-[7px] font-mono font-bold bg-emerald-500 text-black animate-pulse">
+                              NUEVO
+                            </span>
+                          )}
+                          <div className="w-full flex justify-between text-[11px] font-mono">
+                            <span className="font-hud font-bold text-white">{c.id}</span>
+                            <span className="text-[10px] text-slate-400">{c.category}</span>
+                          </div>
+                          <span className={`material-symbols-outlined text-[24px] ${isOcc ? 'text-rose-400' : isBlk ? 'text-amber-400' : 'text-emerald-400'}`}>
+                            {isOcc ? 'directions_car' : isBlk ? 'construction' : 'add_circle'}
+                          </span>
+                          <div className="flex flex-col items-center leading-none">
+                            <span className={`font-mono text-[10px] font-bold ${isOcc ? 'text-yellow-300' : 'text-slate-400'}`}>
+                              {isOcc ? c.plate : isBlk ? 'MANT.' : 'LIBRE'}
+                            </span>
+                            {c.driverName && isOcc && (
+                              <span className="text-[8px] font-mono text-emerald-400 mt-0.5 truncate max-w-[80px]">
+                                {c.driverName.split(' ')[0]}
+                              </span>
+                            )}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* 📊 ADMINISTRATOR LIVE SALES & ANALYTICS CHARTS (DÍA & MES) */}
+                <div className="p-5 rounded-2xl border border-cyan-500/25 flex flex-col gap-5" style={{ background: 'rgba(6,12,32,0.92)' }}>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-cyan-500/20">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-9 h-9 rounded-xl bg-cyan-500/20 border border-cyan-400 flex items-center justify-center text-cyan-300 shadow-[0_0_15px_rgba(0,240,255,0.4)]">
+                        <span className="material-symbols-outlined text-[20px]">insights</span>
+                      </div>
+                      <div>
+                        <div className="font-hud text-sm font-black text-white flex items-center gap-2">
+                          <span>ESTADÍSTICAS & VENTAS EN VIVO</span>
+                          <span className="px-2 py-0.5 rounded font-mono text-[9px] font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">ADMIN DASHBOARD</span>
+                        </div>
+                        <p className="font-mono text-[10px] text-slate-400">Telemetría financiera en tiempo real, curva horaria del día y facturación mensual consolidada.</p>
+                      </div>
+                    </div>
+
+                    {/* Toggle Switch */}
+                    <div className="flex items-center p-1 rounded-xl bg-black/60 border border-cyan-500/30">
+                      <button
+                        type="button"
+                        onClick={() => { playCyberAudio('click'); setSalesChartTab('daily'); }}
+                        className={`px-3.5 py-1.5 rounded-lg font-hud text-[10px] font-black transition-all cursor-pointer ${
+                          salesChartTab === 'daily'
+                            ? 'bg-cyan-500/25 border border-cyan-400 text-cyan-200 shadow-[0_0_15px_rgba(0,240,255,0.4)]'
+                            : 'text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        📊 VENTAS HOY (EN VIVO)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { playCyberAudio('click'); setSalesChartTab('monthly'); }}
+                        className={`px-3.5 py-1.5 rounded-lg font-hud text-[10px] font-black transition-all cursor-pointer ${
+                          salesChartTab === 'monthly'
+                            ? 'bg-violet-500/25 border border-violet-400 text-violet-200 shadow-[0_0_12px_rgba(139,92,246,0.4)]'
+                            : 'text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        📈 VENTAS DEL MES (30 DÍAS)
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* TAB 1: DAILY LIVE SALES */}
+                  {salesChartTab === 'daily' && (
+                    <div className="flex flex-col gap-5 animate-fadeIn">
+                      {/* 4 Daily Bento Metrics */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                        <div className="p-3.5 rounded-xl border border-emerald-500/30 bg-emerald-950/20">
+                          <div className="font-mono text-[10px] text-slate-400 uppercase">Recaudo Total Hoy</div>
+                          <div className="font-mono text-2xl font-black text-emerald-300 mt-0.5 glow-text-emerald">$4.722.000 COP</div>
+                          <div className="font-mono text-[9px] text-emerald-400 mt-1 flex items-center gap-1">
+                            <span className="material-symbols-outlined text-[13px]">trending_up</span>
+                            <span>+18.5% vs día promedio</span>
+                          </div>
+                        </div>
+                        <div className="p-3.5 rounded-xl border border-cyan-500/30 bg-cyan-950/20">
+                          <div className="font-mono text-[10px] text-slate-400 uppercase">Tickets Procesados</div>
+                          <div className="font-mono text-2xl font-black text-cyan-300 mt-0.5 glow-text-cyan">142 tickets</div>
+                          <div className="font-mono text-[9px] text-cyan-400 mt-1">98 salidas liquidadas · 44 en patio</div>
+                        </div>
+                        <div className="p-3.5 rounded-xl border border-violet-500/30 bg-violet-950/20">
+                          <div className="font-mono text-[10px] text-slate-400 uppercase">Hora Pico de Recaudo</div>
+                          <div className="font-mono text-xl font-black text-violet-300 mt-0.5">12:00 - 14:00 PM</div>
+                          <div className="font-mono text-[9px] text-violet-400 mt-1">$980.000 COP liquidados en pico</div>
+                        </div>
+                        <div className="p-3.5 rounded-xl border border-amber-500/30 bg-amber-950/20">
+                          <div className="font-mono text-[10px] text-slate-400 uppercase">Ticket Promedio</div>
+                          <div className="font-mono text-2xl font-black text-amber-300 mt-0.5 glow-text-amber">$14.750 COP</div>
+                          <div className="font-mono text-[9px] text-amber-400 mt-1">Permanencia prom: 2h 45m</div>
+                        </div>
+                      </div>
+
+                      {/* Daily Chart + Vehicle Breakdown */}
+                      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+                        {/* SVG Hourly Bar & Spline Chart */}
+                        <div className="lg:col-span-8 p-4 rounded-xl border border-cyan-500/20 bg-black/60 flex flex-col gap-3">
+                          <div className="flex items-center justify-between">
+                            <span className="font-hud text-xs font-bold text-white flex items-center gap-1.5">
+                              <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
+                              CURVA DE INGRESOS POR HORA (HOY)
+                            </span>
+                            <span className="font-mono text-[10px] text-slate-400">Actualizado en vivo</span>
+                          </div>
+
+                          <div className="h-56 w-full relative">
+                            <svg viewBox="0 0 600 200" className="w-full h-full overflow-visible">
+                              <defs>
+                                <linearGradient id="cyanBarGrad" x1="0" y1="0" x2="0" y2="1">
+                                  <stop offset="0%" stopColor="#00f0ff" stopOpacity="0.9" />
+                                  <stop offset="100%" stopColor="#005577" stopOpacity="0.2" />
+                                </linearGradient>
+                                <linearGradient id="peakBarGrad" x1="0" y1="0" x2="0" y2="1">
+                                  <stop offset="0%" stopColor="#00ff9d" stopOpacity="0.95" />
+                                  <stop offset="100%" stopColor="#007744" stopOpacity="0.2" />
+                                </linearGradient>
+                              </defs>
+                              {/* Grid lines */}
+                              <line x1="40" y1="30" x2="580" y2="30" stroke="rgba(0,240,255,0.1)" strokeDasharray="3" />
+                              <line x1="40" y1="75" x2="580" y2="75" stroke="rgba(0,240,255,0.1)" strokeDasharray="3" />
+                              <line x1="40" y1="120" x2="580" y2="120" stroke="rgba(0,240,255,0.1)" strokeDasharray="3" />
+                              <line x1="40" y1="165" x2="580" y2="165" stroke="rgba(0,240,255,0.2)" />
+
+                              {/* Y Axis Labels */}
+                              <text x="35" y="34" fill="#64748b" fontSize="9" fontFamily="monospace" textAnchor="end">$1.0M</text>
+                              <text x="35" y="79" fill="#64748b" fontSize="9" fontFamily="monospace" textAnchor="end">$700K</text>
+                              <text x="35" y="124" fill="#64748b" fontSize="9" fontFamily="monospace" textAnchor="end">$350K</text>
+                              <text x="35" y="168" fill="#64748b" fontSize="9" fontFamily="monospace" textAnchor="end">$0</text>
+
+                              {/* Bars */}
+                              {[
+                                { x: 55,  h: 24,  val: '$140.000', hr: '06:00', n: 12 },
+                                { x: 115, h: 72,  val: '$480.000', hr: '08:00', n: 34 },
+                                { x: 175, h: 104, val: '$690.000', hr: '10:00', n: 48 },
+                                { x: 235, h: 148, val: '$980.000', hr: '12:00', n: 68, peak: true },
+                                { x: 295, h: 118, val: '$780.000', hr: '14:00', n: 52 },
+                                { x: 355, h: 94,  val: '$620.000', hr: '16:00', n: 42 },
+                                { x: 415, h: 76,  val: '$510.000', hr: '18:00', n: 35 },
+                                { x: 475, h: 52,  val: '$340.000', hr: '20:00', n: 24 },
+                                { x: 535, h: 28,  val: '$182.000', hr: '22:00', n: 14 },
+                              ].map((b, i) => (
+                                <g key={i} className="cursor-pointer group" onMouseEnter={() => setChartHoverInfo(`${b.hr} -> ${b.val} COP (${b.n} vehículos)`)} onMouseLeave={() => setChartHoverInfo(null)}>
+                                  <rect
+                                    x={b.x}
+                                    y={165 - b.h}
+                                    width="32"
+                                    height={b.h}
+                                    rx="4"
+                                    fill={b.peak ? 'url(#peakBarGrad)' : 'url(#cyanBarGrad)'}
+                                    stroke={b.peak ? '#00ff9d' : '#00f0ff'}
+                                    strokeWidth="1"
+                                    className="transition-all hover:opacity-100 opacity-80"
+                                  />
+                                  {b.peak && (
+                                    <text x={b.x + 16} y={165 - b.h - 6} fill="#00ff9d" fontSize="8" fontFamily="monospace" fontWeight="bold" textAnchor="middle">PICO</text>
+                                  )}
+                                  <text x={b.x + 16} y="180" fill="#94a3b8" fontSize="9" fontFamily="monospace" textAnchor="middle">{b.hr}</text>
+                                </g>
+                              ))}
+
+                              {/* Spline Line */}
+                              <polyline
+                                fill="none"
+                                stroke="#00f0ff"
+                                strokeWidth="2.5"
+                                points="71,141 131,93 191,61 251,17 311,47 371,71 431,89 491,113 551,137"
+                                style={{ filter: 'drop-shadow(0 0 6px rgba(0,240,255,0.7))' }}
+                              />
+                              {/* Nodes */}
+                              {[[71,141], [131,93], [191,61], [251,17], [311,47], [371,71], [431,89], [491,113], [551,137]].map(([px, py], idx) => (
+                                <circle key={idx} cx={px} cy={py} r={idx === 3 ? "5" : "3.5"} fill={idx === 3 ? "#00ff9d" : "#00f0ff"} stroke="#020510" strokeWidth="2" />
+                              ))}
+                            </svg>
+                          </div>
+
+                          <div className="flex items-center justify-between pt-2 border-t border-white/10 font-mono text-[11px]">
+                            <span className="text-slate-400">Detalle interactivo:</span>
+                            <span className="text-cyan-300 font-bold">{chartHoverInfo || 'Pasa el cursor sobre las barras para ver recaudos por hora'}</span>
+                          </div>
+                        </div>
+
+                        {/* Vehicle Category Breakdown */}
+                        <div className="lg:col-span-4 p-4 rounded-xl border border-cyan-500/20 bg-black/60 flex flex-col justify-between gap-4">
+                          <div className="font-hud text-xs font-bold text-white pb-2 border-b border-cyan-500/20">
+                            VENTAS POR TIPO DE VEHÍCULO
+                          </div>
+
+                          <div className="flex flex-col gap-3 font-mono text-xs">
+                            <div>
+                              <div className="flex justify-between mb-1">
+                                <span className="flex items-center gap-1.5 text-cyan-300 font-bold">
+                                  <span className="material-symbols-outlined text-[15px]">directions_car</span>
+                                  Carros (62%)
+                                </span>
+                                <span className="text-white font-bold">$2.927.640 COP</span>
+                              </div>
+                              <div className="w-full h-2 rounded-full bg-slate-800 overflow-hidden">
+                                <div className="h-full bg-cyan-400 shadow-[0_0_8px_#00f0ff]" style={{ width: '62%' }} />
+                              </div>
+                            </div>
+
+                            <div>
+                              <div className="flex justify-between mb-1">
+                                <span className="flex items-center gap-1.5 text-emerald-300 font-bold">
+                                  <span className="material-symbols-outlined text-[15px]">two_wheeler</span>
+                                  Motos (26%)
+                                </span>
+                                <span className="text-white font-bold">$1.227.720 COP</span>
+                              </div>
+                              <div className="w-full h-2 rounded-full bg-slate-800 overflow-hidden">
+                                <div className="h-full bg-emerald-400 shadow-[0_0_8px_#00ff9d]" style={{ width: '26%' }} />
+                              </div>
+                            </div>
+
+                            <div>
+                              <div className="flex justify-between mb-1">
+                                <span className="flex items-center gap-1.5 text-violet-300 font-bold">
+                                  <span className="material-symbols-outlined text-[15px]">airport_shuttle</span>
+                                  Camionetas / SUV (12%)
+                                </span>
+                                <span className="text-white font-bold">$566.640 COP</span>
+                              </div>
+                              <div className="w-full h-2 rounded-full bg-slate-800 overflow-hidden">
+                                <div className="h-full bg-violet-400 shadow-[0_0_8px_#8b5cf6]" style={{ width: '12%' }} />
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="p-3 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-[10px] font-mono text-cyan-300 flex items-center justify-between">
+                            <span>Rotación por bahía:</span>
+                            <strong className="font-hud text-white">4.8 rotaciones/día</strong>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* TAB 2: MONTHLY ACCUMULATED SALES */}
+                  {salesChartTab === 'monthly' && (
+                    <div className="flex flex-col gap-5 animate-fadeIn">
+                      {/* 4 Monthly Bento Metrics */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                        <div className="p-3.5 rounded-xl border border-violet-500/30 bg-violet-950/20">
+                          <div className="font-mono text-[10px] text-slate-400 uppercase">Recaudo Acumulado Mes</div>
+                          <div className="font-mono text-2xl font-black text-violet-300 mt-0.5 glow-text-violet">$28.450.000 COP</div>
+                          <div className="font-mono text-[9px] text-violet-400 mt-1 flex items-center gap-1">
+                            <span className="material-symbols-outlined text-[13px]">trending_up</span>
+                            <span>+18.4% vs mes anterior</span>
+                          </div>
+                        </div>
+                        <div className="p-3.5 rounded-xl border border-amber-500/30 bg-amber-950/20">
+                          <div className="font-mono text-[10px] text-slate-400 uppercase">Meta Mensual Proyectada</div>
+                          <div className="font-mono text-2xl font-black text-amber-300 mt-0.5 glow-text-amber">$34.000.000 COP</div>
+                          <div className="font-mono text-[9px] text-amber-400 mt-1">83.6% alcanzado a la fecha</div>
+                        </div>
+                        <div className="p-3.5 rounded-xl border border-emerald-500/30 bg-emerald-950/20">
+                          <div className="font-mono text-[10px] text-slate-400 uppercase">Proyección Cierre Mes</div>
+                          <div className="font-mono text-2xl font-black text-emerald-300 mt-0.5 glow-text-emerald">$34.800.000 COP</div>
+                          <div className="font-mono text-[9px] text-emerald-400 mt-1">Superávit proyectado: +$800.000</div>
+                        </div>
+                        <div className="p-3.5 rounded-xl border border-cyan-500/30 bg-cyan-950/20">
+                          <div className="font-mono text-[10px] text-slate-400 uppercase">Días Mayor Afluencia</div>
+                          <div className="font-mono text-xl font-black text-cyan-300 mt-0.5">Viernes & Sábados</div>
+                          <div className="font-mono text-[9px] text-cyan-400 mt-1">Promedio: $1.420.000 / día</div>
+                        </div>
+                      </div>
+
+                      {/* Monthly Chart + Payment Method Breakdown */}
+                      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+                        <div className="lg:col-span-8 p-4 rounded-xl border border-violet-500/20 bg-black/60 flex flex-col gap-3">
+                          <div className="flex items-center justify-between">
+                            <span className="font-hud text-xs font-bold text-white flex items-center gap-1.5">
+                              <span className="w-2 h-2 rounded-full bg-violet-400 animate-pulse"></span>
+                              RECAUDO ACUMULADO POR SEMANAS (MES EN CURSO)
+                            </span>
+                            <span className="font-mono text-[10px] text-slate-400">Meta: $34M COP</span>
+                          </div>
+
+                          <div className="h-56 w-full relative">
+                            <svg viewBox="0 0 600 200" className="w-full h-full overflow-visible">
+                              <defs>
+                                <linearGradient id="violetBarGrad" x1="0" y1="0" x2="0" y2="1">
+                                  <stop offset="0%" stopColor="#8b5cf6" stopOpacity="0.9" />
+                                  <stop offset="100%" stopColor="#3b0764" stopOpacity="0.2" />
+                                </linearGradient>
+                                <linearGradient id="activeMonthGrad" x1="0" y1="0" x2="0" y2="1">
+                                  <stop offset="0%" stopColor="#00f0ff" stopOpacity="0.9" />
+                                  <stop offset="100%" stopColor="#0369a1" stopOpacity="0.2" />
+                                </linearGradient>
+                              </defs>
+
+                              <line x1="50" y1="30" x2="570" y2="30" stroke="rgba(139,92,246,0.15)" strokeDasharray="3" />
+                              <line x1="50" y1="75" x2="570" y2="75" stroke="rgba(139,92,246,0.15)" strokeDasharray="3" />
+                              <line x1="50" y1="120" x2="570" y2="120" stroke="rgba(139,92,246,0.15)" strokeDasharray="3" />
+                              <line x1="50" y1="165" x2="570" y2="165" stroke="rgba(139,92,246,0.3)" />
+
+                              <text x="45" y="34" fill="#64748b" fontSize="9" fontFamily="monospace" textAnchor="end">$10M</text>
+                              <text x="45" y="79" fill="#64748b" fontSize="9" fontFamily="monospace" textAnchor="end">$7.5M</text>
+                              <text x="45" y="124" fill="#64748b" fontSize="9" fontFamily="monospace" textAnchor="end">$5.0M</text>
+                              <text x="45" y="168" fill="#64748b" fontSize="9" fontFamily="monospace" textAnchor="end">$0</text>
+
+                              {[
+                                { x: 80,  w: 80, h: 102, val: '$6.850.000', label: 'Semana 1 (Días 1-7)', target: '$6.2M' },
+                                { x: 210, w: 80, h: 111, val: '$7.420.000', label: 'Semana 2 (Días 8-14)', target: '$6.8M' },
+                                { x: 340, w: 80, h: 122, val: '$8.150.000', label: 'Semana 3 (Días 15-21)', target: '$7.5M' },
+                                { x: 470, w: 80, h: 90,  val: '$6.030.000', label: 'Semana 4 (Días 22-30)', inProgress: true, target: '$8.2M' },
+                              ].map((m, idx) => (
+                                <g key={idx} className="cursor-pointer group" onMouseEnter={() => setChartHoverInfo(`${m.label} -> ${m.val} COP (Meta: ${m.target})`)} onMouseLeave={() => setChartHoverInfo(null)}>
+                                  <rect
+                                    x={m.x}
+                                    y={165 - m.h}
+                                    width={m.w}
+                                    height={m.h}
+                                    rx="6"
+                                    fill={m.inProgress ? 'url(#activeMonthGrad)' : 'url(#violetBarGrad)'}
+                                    stroke={m.inProgress ? '#00f0ff' : '#8b5cf6'}
+                                    strokeWidth="1.5"
+                                    className="transition-all opacity-85 hover:opacity-100"
+                                  />
+                                  <text x={m.x + m.w / 2} y={165 - m.h - 8} fill={m.inProgress ? '#00f0ff' : '#c084fc'} fontSize="10" fontFamily="monospace" fontWeight="bold" textAnchor="middle">{m.val}</text>
+                                  <text x={m.x + m.w / 2} y="182" fill="#94a3b8" fontSize="9" fontFamily="monospace" textAnchor="middle">Sem {idx + 1}</text>
+                                </g>
+                              ))}
+
+                              {/* Target Line */}
+                              <line x1="50" y1="52" x2="570" y2="52" stroke="#ffb703" strokeWidth="2" strokeDasharray="5" style={{ filter: 'drop-shadow(0 0 5px #ffb703)' }} />
+                              <text x="565" y="48" fill="#ffb703" fontSize="9" fontFamily="monospace" textAnchor="end">Meta Promedio Semanal ($7.5M)</text>
+                            </svg>
+                          </div>
+
+                          <div className="flex items-center justify-between pt-2 border-t border-white/10 font-mono text-[11px]">
+                            <span className="text-slate-400">Detalle interactivo:</span>
+                            <span className="text-violet-300 font-bold">{chartHoverInfo || 'Pasa el cursor sobre las barras de las semanas'}</span>
+                          </div>
+                        </div>
+
+                        {/* Payment Methods Breakdown */}
+                        <div className="lg:col-span-4 p-4 rounded-xl border border-violet-500/20 bg-black/60 flex flex-col justify-between gap-4">
+                          <div className="font-hud text-xs font-bold text-white pb-2 border-b border-violet-500/20">
+                            VENTAS POR MEDIO DE PAGO (MES)
+                          </div>
+
+                          <div className="flex flex-col gap-3 font-mono text-xs">
+                            <div>
+                              <div className="flex justify-between mb-1">
+                                <span className="text-emerald-300 font-bold">Billetera Conductor (34%)</span>
+                                <span className="text-white font-bold">$9.673.000 COP</span>
+                              </div>
+                              <div className="w-full h-2 rounded-full bg-slate-800 overflow-hidden">
+                                <div className="h-full bg-emerald-400 shadow-[0_0_8px_#00ff9d]" style={{ width: '34%' }} />
+                              </div>
+                            </div>
+
+                            <div>
+                              <div className="flex justify-between mb-1">
+                                <span className="text-cyan-300 font-bold">QR Nequi / Daviplata (31%)</span>
+                                <span className="text-white font-bold">$8.819.500 COP</span>
+                              </div>
+                              <div className="w-full h-2 rounded-full bg-slate-800 overflow-hidden">
+                                <div className="h-full bg-cyan-400 shadow-[0_0_8px_#00f0ff]" style={{ width: '31%' }} />
+                              </div>
+                            </div>
+
+                            <div>
+                              <div className="flex justify-between mb-1">
+                                <span className="text-violet-300 font-bold">Datáfono / Tarjetas (22%)</span>
+                                <span className="text-white font-bold">$6.259.000 COP</span>
+                              </div>
+                              <div className="w-full h-2 rounded-full bg-slate-800 overflow-hidden">
+                                <div className="h-full bg-violet-400 shadow-[0_0_8px_#8b5cf6]" style={{ width: '22%' }} />
+                              </div>
+                            </div>
+
+                            <div>
+                              <div className="flex justify-between mb-1">
+                                <span className="text-amber-300 font-bold">Efectivo en Taquilla (13%)</span>
+                                <span className="text-white font-bold">$3.698.500 COP</span>
+                              </div>
+                              <div className="w-full h-2 rounded-full bg-slate-800 overflow-hidden">
+                                <div className="h-full bg-amber-400 shadow-[0_0_8px_#ffb703]" style={{ width: '13%' }} />
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="p-3 rounded-lg bg-violet-500/10 border border-violet-500/20 text-[10px] font-mono text-violet-300 flex items-center justify-between">
+                            <span>Eficiencia de Recaudo:</span>
+                            <strong className="font-hud text-white">99.7% Conciliado</strong>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* VIEW: REGISTRO DE ENTRADA (OPERADOR / ADMIN) */}
+            {activeView === 'registro-de-entrada' && userRole !== 'cliente' && (
+              <div className="flex flex-col gap-6 animate-fadeIn max-w-4xl mx-auto w-full">
+                <div className="p-5 rounded-2xl border border-cyan-500/25" style={{ background: 'linear-gradient(135deg, rgba(8,16,42,0.92) 0%, rgba(4,8,24,0.96) 100%)' }}>
+                  <div className="font-mono text-xs text-emerald-400 uppercase tracking-widest mb-1">// ESCÁNER ÓPTICO // INGRESS PROTOCOL</div>
+                  <h1 className="font-hud text-2xl font-black text-white">REGISTRO DE INGRESO VEHICULAR</h1>
+                </div>
+
+                <form onSubmit={handleRegisterEntry} className="p-6 rounded-2xl border border-cyan-500/25 flex flex-col gap-5" style={{ background: 'rgba(6,12,32,0.85)' }}>
+                  <div>
+                    <label className="font-mono text-xs text-slate-400 uppercase block mb-2 font-bold">Matrícula / Placa del Vehículo</label>
+                    <input
+                      type="text"
+                      placeholder="ABC-123"
+                      value={regPlate}
+                      maxLength={7}
+                      onChange={e => setRegPlate(e.target.value.toUpperCase())}
+                      className="w-full h-14 rounded-xl px-4 font-mono text-3xl font-black tracking-widest text-center text-cyan-300 border border-cyan-500/40 bg-black/60 focus:outline-none focus:border-cyan-400"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    {['Carro', 'Moto'].map(cat => (
+                      <button
+                        key={cat}
+                        type="button"
+                        onClick={() => { playCyberAudio('click'); setRegCat(cat); }}
+                        className={`p-3 rounded-xl border font-hud text-xs font-bold transition-all ${
+                          regCat === cat ? 'bg-cyan-500/25 border-cyan-400 text-cyan-300 shadow-[0_0_15px_rgba(0,240,255,0.3)]' : 'bg-black/40 border-white/10 text-slate-400'
+                        }`}
+                      >
+                        {cat}
+                      </button>
+                    ))}
+                  </div>
+
+                  <button type="submit" className="h-13 rounded-xl font-hud text-xs font-black tracking-wider cyber-btn-emerald cursor-pointer">
+                    GENERAR TICKET & APERTURA DE BARRERA
+                  </button>
+                </form>
+              </div>
+            )}
+
+            {/* VIEW: SALIDA Y COBRO (OPERADOR / ADMIN) */}
+            {activeView === 'salida-y-cobro' && userRole !== 'cliente' && (
+              <div className="flex flex-col gap-6 animate-fadeIn">
+                <div className="p-5 rounded-2xl border border-cyan-500/25" style={{ background: 'linear-gradient(135deg, rgba(8,16,42,0.92) 0%, rgba(4,8,24,0.96) 100%)' }}>
+                  <div className="font-mono text-xs text-violet-400 uppercase tracking-widest mb-1">// DESPACHO Y CAJA // LIQUIDACIÓN QUANTUM</div>
+                  <h1 className="font-hud text-2xl font-black text-white">SALIDA Y LIQUIDACIÓN AUTOMATIZADA</h1>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                  {/* Left Column: Vehicle & Camera */}
+                  <div className="lg:col-span-7 flex flex-col gap-5 p-5 rounded-2xl border border-cyan-500/25" style={{ background: 'rgba(6,12,32,0.85)' }}>
+                    <div className="flex items-center justify-between pb-3 border-b border-cyan-500/20">
+                      <span className="font-mono text-xs text-slate-400">VEHÍCULO LOCALIZADO EN TERMINAL</span>
+                      <span className="px-2.5 py-0.5 rounded bg-rose-500/20 text-rose-300 font-mono text-[10px] font-bold border border-rose-500/40">CELDA A-01</span>
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 rounded-xl border border-cyan-500/20 bg-black/60">
+                      <div>
+                        <span className="font-mono text-[10px] text-slate-500 uppercase block mb-1">Placa Reconocida</span>
+                        <div className="plate-bezel px-4 py-1 rounded-lg">
+                          <span className="font-mono text-2xl font-black text-yellow-300 tracking-widest block">KLO-892</span>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <span className="font-mono text-[10px] text-slate-500 uppercase block mb-1">Permanencia</span>
+                        <div className="font-mono text-xl font-black text-cyan-300">3h 15m {secondsTicking}s</div>
+                      </div>
+                    </div>
+
+                    {/* Camera View */}
+                    <div className="h-44 rounded-xl overflow-hidden relative border border-emerald-500/40 group">
+                      <img src="https://lh3.googleusercontent.com/aida-public/AB6AXuDX824AoEaYC9qCqNMPBVrlOA-t-AMBD-afvstjk8RYYEwC3cBMkM5AVhnCxmfl4ci9W1-Z6KlN7WbhSHdcn7Y-LBuPjXDNrMWUTXNCwuwOpHkJ4THl3qi1OLOEjJhsPizEGLut46kp6z01m_18Ab7w6XGYHdj237bQdKLcEgp66W0bXq9OKzNaL5PQl8iEBuUcJt7z-sy8-IE_Trwjs5-WbgeecDVagp3wA82y6AjLAEhRzhCzODEL" className="w-full h-full object-cover" alt="Camera feed" />
+                      <div className="camera-reticle" />
+                      <div className="absolute top-1/3 left-1/4 right-1/4 h-10 border-2 border-cyan-400 rounded bg-cyan-500/20 flex items-center justify-center font-mono text-[11px] text-yellow-300 font-bold shadow-[0_0_15px_rgba(0,240,255,0.6)]">
+                        OCR LPR: KLO-892 [99.4%]
+                      </div>
+                    </div>
+
+                    {/* Breakdown */}
+                    <div className="p-4 rounded-xl border border-cyan-500/20 font-mono text-xs flex flex-col gap-2 bg-black/40">
+                      <div className="flex justify-between text-slate-400">
+                        <span>3 horas completas (3 x $4.500):</span>
+                        <span className="text-white font-bold">$13.500 COP</span>
+                      </div>
+                      <div className="flex justify-between text-slate-400">
+                        <span>Fracción 15 min (1/4 hora):</span>
+                        <span className="text-white font-bold">$1.125 COP</span>
+                      </div>
+                      <div className="flex justify-between pt-2 border-t border-cyan-500/20 font-hud text-sm">
+                        <span className="text-cyan-400 font-bold">TOTAL LIQUIDADO:</span>
+                        <span className="text-cyan-300 font-black glow-text-cyan text-lg">$14.625 COP</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Right Column: Payment Desk */}
+                  <div className="lg:col-span-5 flex flex-col gap-5 p-5 rounded-2xl border border-cyan-500/35" style={{ background: 'rgba(6,12,32,0.92)' }}>
+                    <div className="font-hud text-sm font-bold text-white pb-3 border-b border-cyan-500/20">RECEPCIÓN DE PAGO EN TAQUILLA</div>
+                    
+                    <div className="grid grid-cols-3 gap-2">
+                      {['cash', 'card', 'qr'].map(m => (
+                        <button
+                          key={m}
+                          onClick={() => { playCyberAudio('click'); setPaymentMethod(m); }}
+                          className={`p-3 rounded-xl border font-hud text-[10px] font-bold uppercase transition-all ${
+                            paymentMethod === m ? 'bg-cyan-500/25 border-cyan-400 text-cyan-300 shadow-[0_0_12px_rgba(0,240,255,0.3)]' : 'bg-black/50 border-white/10 text-slate-400'
+                          }`}
+                        >
+                          {m === 'cash' ? 'Efectivo' : m === 'card' ? 'Tarjeta NFC' : 'QR Nequi'}
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="p-4 rounded-xl border border-cyan-500/20 flex flex-col gap-3 bg-black/50">
+                      <div className="font-mono text-xs text-slate-400">Monto Recibido en Caja:</div>
+                      <input
+                        type="number"
+                        value={receivedAmount}
+                        onChange={e => setReceivedAmount(Number(e.target.value))}
+                        className="w-full h-11 px-3 rounded-lg font-mono text-xl font-black text-cyan-300 bg-black/80 border border-cyan-500/30 focus:outline-none"
+                      />
+                      <div className="flex justify-between items-center pt-2 border-t border-white/10">
+                        <span className="font-mono text-xs text-slate-400">Cambio / Vueltos:</span>
+                        <span className="font-mono text-xl font-black text-emerald-300 glow-text-emerald">
+                          ${(receivedAmount - 14625).toLocaleString('es-CO')} COP
+                        </span>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={handleConfirmPayment}
+                      className="w-full py-4 rounded-xl font-hud text-xs font-black tracking-wider cyber-btn-emerald cursor-pointer"
+                    >
+                      CONFIRMAR PAGO Y LIBERAR CELDA A-01
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* VIEW: TARIFAS Y UMBRALES (SOLO ADMIN) */}
+            {activeView === 'tarifas-y-celdas' && userRole === 'administrador' && (
+              <div className="flex flex-col gap-6 animate-fadeIn">
+                <div className="p-5 rounded-2xl border border-cyan-500/25" style={{ background: 'linear-gradient(135deg, rgba(8,16,44,0.92) 0%, rgba(3,7,20,0.96) 100%)' }}>
+                  <div className="font-mono text-xs text-amber-400 uppercase tracking-widest mb-1">// POLÍTICAS DE AFORO & AUDIO SYNTH // PRD 3.2</div>
+                  <h1 className="font-hud text-2xl font-black text-white">UMBRALES DE AFORO & ALARMAS SONORAS</h1>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* Thresholds */}
+                  <div className="p-5 rounded-2xl border border-cyan-500/25 flex flex-col gap-4" style={{ background: 'rgba(6,12,32,0.85)' }}>
+                    <div className="font-hud text-sm font-bold text-white">1. UMBRALES DE AFORO</div>
+                    
+                    <div className="p-4 rounded-xl border border-rose-500/30 bg-rose-950/20">
+                      <div className="flex justify-between font-mono text-xs mb-2">
+                        <span className="text-rose-400 font-bold">Umbral Crítico de Aforo</span>
+                        <span className="text-rose-300 font-black">{criticalThreshold}%</span>
+                      </div>
+                      <input
+                        type="range" min="70" max="100" value={criticalThreshold}
+                        onChange={e => setCriticalThreshold(Number(e.target.value))}
+                        className="cyber-range"
+                      />
+                    </div>
+
+                    <div className="font-mono text-xs text-slate-400 mt-2">Simular estados de ocupación:</div>
+                    <div className="flex gap-2">
+                      <button onClick={() => { playCyberAudio('laser'); setSimulatedAforo(90); }} className="px-3 py-1.5 rounded-lg font-mono text-xs font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40 cursor-pointer">
+                        Simular 90% (Crítico)
+                      </button>
+                      <button onClick={() => { playCyberAudio('click'); setSimulatedAforo(75); }} className="px-3 py-1.5 rounded-lg font-mono text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 cursor-pointer">
+                        Simular 75%
+                      </button>
+                      {simulatedAforo !== null && (
+                        <button onClick={() => { playCyberAudio('click'); setSimulatedAforo(null); }} className="px-3 py-1.5 rounded-lg font-mono text-xs font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-400 cursor-pointer">
+                          Restablecer Real
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Sound Engine */}
+                  <div className="p-5 rounded-2xl border border-cyan-500/25 flex flex-col gap-4" style={{ background: 'rgba(6,12,32,0.85)' }}>
+                    <div className="font-hud text-sm font-bold text-white">2. SÍNTESIS AUDITIVA (WEB AUDIO API)</div>
+                    <div className="grid grid-cols-3 gap-2">
+                      {['alarm', 'chime', 'beep'].map(s => (
+                        <button
+                          key={s}
+                          onClick={() => { setSoundType(s); playCyberAudio(s === 'alarm' ? 'laser' : s === 'chime' ? 'checkout' : 'click'); }}
+                          className={`p-3 rounded-xl border font-hud text-xs font-bold uppercase transition-all cursor-pointer ${
+                            soundType === s ? 'bg-cyan-500/25 border-cyan-400 text-cyan-300' : 'bg-black/50 border-white/10 text-slate-400'
+                          }`}
+                        >
+                          {s}
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="flex items-center gap-3 pt-2">
+                      <div className="flex items-end gap-1 h-7 px-2 py-1 bg-black/60 rounded-lg border border-cyan-500/30">
+                        <span className={`w-1 rounded-full bg-cyan-400 ${isTestingAudio ? 'audio-bar-1' : 'h-2'}`} />
+                        <span className={`w-1 rounded-full bg-cyan-400 ${isTestingAudio ? 'audio-bar-2' : 'h-3'}`} />
+                        <span className={`w-1 rounded-full bg-cyan-300 ${isTestingAudio ? 'audio-bar-3' : 'h-4'}`} />
+                      </div>
+                      <button
+                        onClick={() => {
+                          setIsTestingAudio(true);
+                          playCyberAudio('laser');
+                          setTimeout(() => setIsTestingAudio(false), 800);
+                        }}
+                        className="px-4 py-2 rounded-xl font-hud text-xs font-bold cyber-btn-cyan cursor-pointer"
+                      >
+                        PROBAR AUDIO
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* VIEW: REPORTES (SOLO ADMIN) */}
+            {activeView === 'reportes-y-auditoria' && userRole === 'administrador' && (
+              <div className="flex flex-col gap-6 animate-fadeIn">
+                <div className="p-5 rounded-2xl border border-cyan-500/25" style={{ background: 'linear-gradient(135deg, rgba(8,16,44,0.92) 0%, rgba(4,8,24,0.96) 100%)' }}>
+                  <div className="font-mono text-xs text-cyan-400 uppercase tracking-widest mb-1">// HISTÓRICO FISCAL // BLOCKCHAIN SHA-256</div>
+                  <h1 className="font-hud text-2xl font-black text-white">REPORTES OPERATIVOS & AUDITORÍA</h1>
+                </div>
+
+                <div className="p-5 rounded-2xl border border-cyan-500/25 overflow-x-auto" style={{ background: 'rgba(6,12,32,0.85)' }}>
+                  <table className="w-full text-left font-mono text-xs">
+                    <thead>
+                      <tr className="border-b border-cyan-500/20 text-cyan-400 font-hud text-[10px]">
+                        <th className="p-3">Ticket</th>
+                        <th className="p-3">Placa</th>
+                        <th className="p-3">Celda</th>
+                        <th className="p-3">Estadía</th>
+                        <th className="p-3 text-right">Monto</th>
+                        <th className="p-3">Medio</th>
+                        <th className="p-3 text-center">Estado</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/5">
+                      {[
+                        { id: '#TK-2099-001', plate: 'KLO-892', cell: 'A-01', duration: '3h 15m', fee: '$14.625', method: 'Efectivo', status: 'Completado' },
+                        { id: '#TK-2099-002', plate: 'MTR-411', cell: 'B-01', duration: '1h 00m', fee: '$2.200', method: 'QR Nequi', status: 'Completado' },
+                        { id: '#TK-2099-003', plate: 'TRK-219', cell: 'A-04', duration: '2h 30m', fee: '$13.500', method: 'Tarjeta', status: 'Completado' },
+                      ].map(r => (
+                        <tr key={r.id} className="hover:bg-cyan-500/5">
+                          <td className="p-3 font-bold text-cyan-400">{r.id}</td>
+                          <td className="p-3 font-bold text-yellow-300">{r.plate}</td>
+                          <td className="p-3 text-cyan-300">{r.cell}</td>
+                          <td className="p-3 text-emerald-300">{r.duration}</td>
+                          <td className="p-3 text-right font-black text-white">{r.fee} COP</td>
+                          <td className="p-3 text-slate-300">{r.method}</td>
+                          <td className="p-3 text-center"><span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold text-[10px]">{r.status}</span></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </main>
+
+          {/* ── MODAL DE SELECCIÓN DE ROL (GATEWAY DE ACCESO OBLIGATORIO) ── */}
+          {showRoleModal && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-xl animate-fadeIn">
+              <div 
+                className="relative max-w-4xl w-full rounded-3xl p-6 md:p-8 flex flex-col gap-6 overflow-hidden border border-cyan-500/40"
+                style={{
+                  background: 'linear-gradient(160deg, rgba(8,16,44,0.98) 0%, rgba(2,6,20,0.99) 100%)',
+                  boxShadow: '0 0 80px rgba(0,240,255,0.2), 0 32px 80px rgba(0,0,0,0.95)',
+                }}
+              >
+                {/* Top cyan scan beam */}
+                <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-cyan-400 to-transparent" />
+                
+                {/* Header */}
+                <div className="text-center flex flex-col items-center gap-2">
+                  <div className="flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-mono font-bold bg-cyan-500/15 border border-cyan-500/30 text-cyan-300">
+                    <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
+                    <span>PORTAL DE IDENTIFICACIÓN // PARKFLOW 2099</span>
+                  </div>
+                  <h2 className="font-hud text-2xl md:text-3xl font-black text-white tracking-wider">
+                    ¿CON QUÉ ROL DESEAS INGRESAR?
+                  </h2>
+                  <p className="font-sans text-xs md:text-sm text-slate-400 max-w-lg">
+                    Cada perfil habilita las acciones y herramientas correspondientes a su nivel de autorización operativa:
+                  </p>
+                </div>
+
+                {/* STEP 1: CHOOSE ROLE */}
+                {selectedRoleForAuth === null ? (
+                  <>
+                    {/* Header */}
+                    <div className="text-center flex flex-col items-center gap-2">
+                      <div className="flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-mono font-bold bg-cyan-500/15 border border-cyan-500/30 text-cyan-300">
+                        <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
+                        <span>PORTAL DE IDENTIFICACIÓN & ACCESO SEGURO // PARKFLOW 2099</span>
+                      </div>
+                      <h2 className="font-hud text-2xl md:text-3xl font-black text-white tracking-wider">
+                        ¿CON QUÉ ROL DESEAS INGRESAR?
+                      </h2>
+                      <p className="font-sans text-xs md:text-sm text-slate-400 max-w-lg">
+                        Elige tu perfil de acceso. A continuación se te solicitará tu identificación para cargar tu perfil personalizado y aplicar los permisos de seguridad:
+                      </p>
+                    </div>
+
+                    {/* 3 Role Cards */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
+                      
+                      {/* CARD 1: CLIENTE */}
+                      <div
+                        onClick={() => selectRole('cliente')}
+                        className="p-5 rounded-2xl border border-emerald-500/40 bg-emerald-950/20 hover:bg-emerald-950/40 hover:border-emerald-400 transition-all cursor-pointer flex flex-col justify-between group hover:scale-102 hover:shadow-[0_0_25px_rgba(0,255,157,0.3)] relative overflow-hidden"
+                      >
+                        <div className="flex flex-col gap-3">
+                          <div className="flex justify-between items-start">
+                            <div className="w-12 h-12 rounded-xl bg-emerald-500/20 border border-emerald-400 flex items-center justify-center text-emerald-300">
+                              <span className="material-symbols-outlined text-[28px]">directions_car</span>
+                            </div>
+                            <span className="px-2 py-0.5 rounded font-mono text-[9px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                              PÚBLICO SEGURO
+                            </span>
+                          </div>
+
+                          <div>
+                            <h3 className="font-hud text-base font-black text-white group-hover:text-emerald-300 transition-colors">
+                              CLIENTE / CONDUCTOR
+                            </h3>
+                            <p className="font-mono text-[11px] text-slate-400 mt-1">
+                              Acceso con tu Cédula y Placa. Autogestión aislada y protegida.
+                            </p>
+                          </div>
+
+                          <div className="border-t border-emerald-500/20 pt-3 flex flex-col gap-1.5 font-mono text-[11px] text-slate-300">
+                            <div className="flex items-center gap-1.5">
+                              <span className="material-symbols-outlined text-emerald-400 text-[15px]">check_circle</span>
+                              <span>Perfil único con tu Cédula y Placa</span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <span className="material-symbols-outlined text-emerald-400 text-[15px]">check_circle</span>
+                              <span>Elegir celda libre en mapa 3D</span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <span className="material-symbols-outlined text-emerald-400 text-[15px]">check_circle</span>
+                              <span>Auto-ticket QR y pago en línea</span>
+                            </div>
+                            <div className="flex items-center gap-1.5 text-rose-400 text-[10px]">
+                              <span className="material-symbols-outlined text-[13px]">lock</span>
+                              <span>Sin acceso a datos internos del parqueadero</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          className="mt-5 w-full py-2.5 rounded-xl font-hud text-xs font-black tracking-wider cyber-btn-emerald cursor-pointer"
+                        >
+                          IDENTIFICARME COMO CLIENTE
+                        </button>
+                      </div>
+
+                      {/* CARD 2: OPERADOR */}
+                      <div
+                        onClick={() => selectRole('operador')}
+                        className="p-5 rounded-2xl border border-violet-500/40 bg-violet-950/20 hover:bg-violet-950/40 hover:border-violet-400 transition-all cursor-pointer flex flex-col justify-between group hover:scale-102 hover:shadow-[0_0_25px_rgba(139,92,246,0.3)] relative overflow-hidden"
+                      >
+                        <div className="flex flex-col gap-3">
+                          <div className="flex justify-between items-start">
+                            <div className="w-12 h-12 rounded-xl bg-violet-500/20 border border-violet-400 flex items-center justify-center text-violet-300">
+                              <span className="material-symbols-outlined text-[28px]">badge</span>
+                            </div>
+                            <span className="px-2 py-0.5 rounded font-mono text-[9px] font-bold bg-violet-500/20 text-violet-300 border border-violet-500/40">
+                              NIVEL 2 // TAQUILLA
+                            </span>
+                          </div>
+
+                          <div>
+                            <h3 className="font-hud text-base font-black text-white group-hover:text-violet-300 transition-colors">
+                              OPERADOR DE TURNO
+                            </h3>
+                            <p className="font-mono text-[11px] text-slate-400 mt-1">
+                              Acceso con Carnet y PIN. Taquilla, barreras y caja.
+                            </p>
+                          </div>
+
+                          <div className="border-t border-violet-500/20 pt-3 flex flex-col gap-1.5 font-mono text-[11px] text-slate-300">
+                            <div className="flex items-center gap-1.5">
+                              <span className="material-symbols-outlined text-violet-400 text-[15px]">check_circle</span>
+                              <span>Acreditación con Carnet & PIN</span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <span className="material-symbols-outlined text-violet-400 text-[15px]">check_circle</span>
+                              <span>Escáner óptico LPR & barrera norte</span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <span className="material-symbols-outlined text-violet-400 text-[15px]">check_circle</span>
+                              <span>Liquidación en caja y vueltos</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          className="mt-5 w-full py-2.5 rounded-xl font-hud text-xs font-black tracking-wider cyber-btn-violet cursor-pointer"
+                        >
+                          IDENTIFICARME COMO OPERADOR
+                        </button>
+                      </div>
+
+                      {/* CARD 3: ADMINISTRADOR */}
+                      <div
+                        onClick={() => selectRole('administrador')}
+                        className="p-5 rounded-2xl border border-cyan-500/40 bg-cyan-950/20 hover:bg-cyan-950/40 hover:border-cyan-400 transition-all cursor-pointer flex flex-col justify-between group hover:scale-102 hover:shadow-[0_0_25px_rgba(0,240,255,0.3)] relative overflow-hidden"
+                      >
+                        <div className="flex flex-col gap-3">
+                          <div className="flex justify-between items-start">
+                            <div className="w-12 h-12 rounded-xl bg-cyan-500/20 border border-cyan-400 flex items-center justify-center text-cyan-300">
+                              <span className="material-symbols-outlined text-[28px]">admin_panel_settings</span>
+                            </div>
+                            <span className="px-2 py-0.5 rounded font-mono text-[9px] font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
+                              NIVEL 4 // FULL ACCESS
+                            </span>
+                          </div>
+
+                          <div>
+                            <h3 className="font-hud text-base font-black text-white group-hover:text-cyan-300 transition-colors">
+                              ADMINISTRADOR GLOBAL
+                            </h3>
+                            <p className="font-mono text-[11px] text-slate-400 mt-1">
+                              Superuser con clave cuántica. Acceso total a todo el sistema.
+                            </p>
+                          </div>
+
+                          <div className="border-t border-cyan-500/20 pt-3 flex flex-col gap-1.5 font-mono text-[11px] text-slate-300">
+                            <div className="flex items-center gap-1.5">
+                              <span className="material-symbols-outlined text-cyan-400 text-[15px]">check_circle</span>
+                              <span>Acceso irrestricto a todos los módulos</span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <span className="material-symbols-outlined text-cyan-400 text-[15px]">check_circle</span>
+                              <span>Configurar tarifas y alarmas al 90%</span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <span className="material-symbols-outlined text-cyan-400 text-[15px]">check_circle</span>
+                              <span>Auditoría contable SHA-256 & MySQL</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          className="mt-5 w-full py-2.5 rounded-xl font-hud text-xs font-black tracking-wider cyber-btn-cyan cursor-pointer"
+                        >
+                          ACCESO ADMINISTRADOR
+                        </button>
+                      </div>
+
+                    </div>
+
+                    {userRole && (
+                      <div className="text-center pt-2">
+                        <button
+                          type="button"
+                          onClick={() => setShowRoleModal(false)}
+                          className="font-mono text-xs text-slate-400 hover:text-white underline cursor-pointer"
+                        >
+                          Continuar con mi sesión actual ({currentUser?.name || userRole.toUpperCase()})
+                        </button>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  /* STEP 2: AUTHENTICATION FORM FOR THE SELECTED ROLE */
+                  <form onSubmit={handleAuthenticate} className="flex flex-col gap-5 animate-fadeIn">
+                    <div className="flex items-center justify-between pb-3 border-b border-cyan-500/20">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedRoleForAuth(null)}
+                        className="flex items-center gap-1.5 font-mono text-xs text-slate-400 hover:text-cyan-300 transition-colors cursor-pointer"
+                      >
+                        <span className="material-symbols-outlined text-[16px]">arrow_back</span>
+                        <span>Volver a selección de roles</span>
+                      </button>
+
+                      <span className={`px-2.5 py-0.5 rounded font-mono text-[10px] font-bold border ${
+                        selectedRoleForAuth === 'cliente' ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' :
+                        selectedRoleForAuth === 'operador' ? 'bg-violet-500/20 text-violet-300 border-violet-500/40' :
+                        'bg-cyan-500/20 text-cyan-300 border-cyan-500/40'
+                      }`}>
+                        {selectedRoleForAuth === 'cliente' ? 'PORTAL DE CONDUCTOR // IDENTIFICACIÓN' :
+                         selectedRoleForAuth === 'operador' ? 'TAQUILLA // ACREDITACIÓN DE TURNO' :
+                         'ROOT CONSOLE // CLAVE DE SEGURIDAD'}
+                      </span>
+                    </div>
+
+                    {/* CLIENT AUTH FORM */}
+                    {selectedRoleForAuth === 'cliente' && (
+                      <div className="flex flex-col gap-4">
+                        <div className="p-4 rounded-xl border border-emerald-500/30 bg-emerald-950/20 flex items-start gap-3">
+                          <span className="material-symbols-outlined text-emerald-400 text-[26px]">shield_person</span>
+                          <div>
+                            <div className="font-hud text-sm font-bold text-white">IDENTIFICACIÓN DEL CLIENTE / CONDUCTOR</div>
+                            <p className="font-mono text-xs text-slate-400 mt-0.5">
+                              Ingresa tu número de documento y nombre para acceder a tu perfil personalizado. Tus datos protegen tu auto-ticket digital y no tendrás acceso a la información confidencial del negocio.
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <div>
+                            <label className="block font-mono text-xs text-slate-400 mb-1 font-bold">Cédula / Documento de Identidad:</label>
+                            <input
+                              type="text"
+                              required
+                              placeholder="Ej. 1020304050"
+                              value={clientAuthDoc}
+                              onChange={e => setClientAuthDoc(e.target.value)}
+                              className="w-full h-12 rounded-xl px-4 font-mono text-base font-bold text-cyan-300 bg-black/60 border border-emerald-500/40 focus:outline-none focus:border-emerald-400"
+                            />
+                          </div>
+                          <div>
+                            <label className="block font-mono text-xs text-slate-400 mb-1 font-bold">Nombre Completo del Conductor:</label>
+                            <input
+                              type="text"
+                              required
+                              placeholder="Ej. Alejandro Vélez"
+                              value={clientAuthName}
+                              onChange={e => setClientAuthName(e.target.value)}
+                              className="w-full h-12 rounded-xl px-4 font-sans text-base font-bold text-white bg-black/60 border border-emerald-500/40 focus:outline-none focus:border-emerald-400"
+                            />
+                          </div>
+                          <div>
+                            <label className="block font-mono text-xs text-slate-400 mb-1 font-bold">Placa Habitual del Vehículo:</label>
+                            <input
+                              type="text"
+                              required
+                              placeholder="Ej. KLO-892"
+                              value={clientAuthPlate}
+                              onChange={e => setClientAuthPlate(e.target.value.toUpperCase())}
+                              className="w-full h-12 rounded-xl px-4 font-mono text-xl font-black text-yellow-300 tracking-widest bg-black/60 border border-emerald-500/40 focus:outline-none focus:border-emerald-400 text-center"
+                            />
+                          </div>
+                          <div>
+                            <label className="block font-mono text-xs text-slate-400 mb-1 font-bold">Teléfono Móvil / WhatsApp:</label>
+                            <input
+                              type="text"
+                              placeholder="Ej. 310 987 6543"
+                              value={clientAuthPhone}
+                              onChange={e => setClientAuthPhone(e.target.value)}
+                              className="w-full h-12 rounded-xl px-4 font-mono text-base text-slate-300 bg-black/60 border border-emerald-500/40 focus:outline-none focus:border-emerald-400"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
+                          <button
+                            type="button"
+                            onClick={() => fillDemoCredentials('cliente')}
+                            className="px-3.5 py-2 rounded-xl font-mono text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 hover:bg-emerald-500/20 cursor-pointer flex items-center gap-1.5"
+                          >
+                            <span className="material-symbols-outlined text-[16px]">bolt</span>
+                            <span>Cargar Perfil Demo: Alejandro Vélez (KLO-892)</span>
+                          </button>
+
+                          <button
+                            type="submit"
+                            className="w-full sm:w-auto px-8 py-3 rounded-xl font-hud text-xs font-black tracking-wider cyber-btn-emerald cursor-pointer shadow-[0_0_20px_rgba(0,255,157,0.3)]"
+                          >
+                            INGRESAR A MI PORTAL DE CONDUCTOR
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* OPERATOR AUTH FORM */}
+                    {selectedRoleForAuth === 'operador' && (
+                      <div className="flex flex-col gap-4">
+                        <div className="p-4 rounded-xl border border-violet-500/30 bg-violet-950/20 flex items-start gap-3">
+                          <span className="material-symbols-outlined text-violet-400 text-[26px]">badge</span>
+                          <div>
+                            <div className="font-hud text-sm font-bold text-white">AUTENTICACIÓN DE OPERADOR DE TAQUILLA</div>
+                            <p className="font-mono text-xs text-slate-400 mt-0.5">
+                              Ingresa tu carnet y credencial autorizada para iniciar el turno de recepción, control de barreras y liquidación de salidas.
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <div>
+                            <label className="block font-mono text-xs text-slate-400 mb-1 font-bold">Código de Carnet / ID Operador:</label>
+                            <input
+                              type="text"
+                              required
+                              placeholder="Ej. OP-418"
+                              value={opAuthBadge}
+                              onChange={e => setOpAuthBadge(e.target.value.toUpperCase())}
+                              className="w-full h-12 rounded-xl px-4 font-mono text-base font-bold text-cyan-300 bg-black/60 border border-violet-500/40 focus:outline-none focus:border-violet-400"
+                            />
+                          </div>
+                          <div>
+                            <label className="block font-mono text-xs text-slate-400 mb-1 font-bold">Nombre del Operador:</label>
+                            <input
+                              type="text"
+                              required
+                              placeholder="Ej. Carlos Rojas"
+                              value={opAuthName}
+                              onChange={e => setOpAuthName(e.target.value)}
+                              className="w-full h-12 rounded-xl px-4 font-sans text-base font-bold text-white bg-black/60 border border-violet-500/40 focus:outline-none focus:border-violet-400"
+                            />
+                          </div>
+                          <div>
+                            <label className="block font-mono text-xs text-slate-400 mb-1 font-bold">PIN de Seguridad de Taquilla:</label>
+                            <input
+                              type="password"
+                              required
+                              placeholder="••••"
+                              value={opAuthPin}
+                              onChange={e => setOpAuthPin(e.target.value)}
+                              className="w-full h-12 rounded-xl px-4 font-mono text-xl text-violet-300 bg-black/60 border border-violet-500/40 focus:outline-none focus:border-violet-400 text-center tracking-widest"
+                            />
+                          </div>
+                          <div>
+                            <label className="block font-mono text-xs text-slate-400 mb-1 font-bold">Turno de Operación Asignado:</label>
+                            <select
+                              value={opAuthShift}
+                              onChange={e => setOpAuthShift(e.target.value)}
+                              className="w-full h-12 rounded-xl px-4 font-mono text-xs font-bold text-white bg-black/60 border border-violet-500/40 focus:outline-none focus:border-violet-400"
+                            >
+                              <option value="Turno Mañana [06:00 - 14:00]">Turno Mañana [06:00 - 14:00]</option>
+                              <option value="Turno Tarde [14:00 - 22:00]">Turno Tarde [14:00 - 22:00]</option>
+                              <option value="Turno Noche [22:00 - 06:00]">Turno Noche [22:00 - 06:00]</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
+                          <button
+                            type="button"
+                            onClick={() => fillDemoCredentials('operador')}
+                            className="px-3.5 py-2 rounded-xl font-mono text-xs text-violet-400 bg-violet-500/10 border border-violet-500/30 hover:bg-violet-500/20 cursor-pointer flex items-center gap-1.5"
+                          >
+                            <span className="material-symbols-outlined text-[16px]">bolt</span>
+                            <span>Cargar Credencial Demo: Carlos Rojas (OP-418)</span>
+                          </button>
+
+                          <button
+                            type="submit"
+                            className="w-full sm:w-auto px-8 py-3 rounded-xl font-hud text-xs font-black tracking-wider cyber-btn-violet cursor-pointer shadow-[0_0_20px_rgba(139,92,246,0.3)]"
+                          >
+                            INICIAR TURNO DE OPERADOR
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* ADMIN AUTH FORM */}
+                    {selectedRoleForAuth === 'administrador' && (
+                      <div className="flex flex-col gap-4">
+                        <div className="p-4 rounded-xl border border-cyan-500/30 bg-cyan-950/20 flex items-start gap-3">
+                          <span className="material-symbols-outlined text-cyan-400 text-[26px]">admin_panel_settings</span>
+                          <div>
+                            <div className="font-hud text-sm font-bold text-white">AUTORIZACIÓN DE SUPERUSUARIO MASTER (NIVEL 4)</div>
+                            <p className="font-mono text-xs text-slate-400 mt-0.5">
+                              Ingreso con credenciales maestras. Otorga control irrestricto sobre políticas de tarifas, sensores auditivos de aforo, auditoría contable y base de datos.
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                          <div>
+                            <label className="block font-mono text-xs text-slate-400 mb-1 font-bold">Usuario Administrador:</label>
+                            <input
+                              type="text"
+                              required
+                              placeholder="admin.master"
+                              value={adminAuthUser}
+                              onChange={e => setAdminAuthUser(e.target.value)}
+                              className="w-full h-12 rounded-xl px-4 font-mono text-base font-bold text-cyan-300 bg-black/60 border border-cyan-500/40 focus:outline-none focus:border-cyan-400"
+                            />
+                          </div>
+                          <div>
+                            <label className="block font-mono text-xs text-slate-400 mb-1 font-bold">Llave Cuántica / Clave:</label>
+                            <input
+                              type="password"
+                              required
+                              placeholder="••••••••••••"
+                              value={adminAuthKey}
+                              onChange={e => setAdminAuthKey(e.target.value)}
+                              className="w-full h-12 rounded-xl px-4 font-mono text-xl text-cyan-300 bg-black/60 border border-cyan-500/40 focus:outline-none focus:border-cyan-400 tracking-widest text-center"
+                            />
+                          </div>
+                          <div>
+                            <label className="block font-mono text-xs text-slate-400 mb-1 font-bold">Token 2FA OTP:</label>
+                            <input
+                              type="text"
+                              placeholder="892-411"
+                              value={adminAuthOtp}
+                              onChange={e => setAdminAuthOtp(e.target.value)}
+                              className="w-full h-12 rounded-xl px-4 font-mono text-base font-bold text-emerald-400 bg-black/60 border border-cyan-500/40 focus:outline-none focus:border-cyan-400 text-center tracking-widest"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
+                          <button
+                            type="button"
+                            onClick={() => fillDemoCredentials('administrador')}
+                            className="px-3.5 py-2 rounded-xl font-mono text-xs text-cyan-400 bg-cyan-500/10 border border-cyan-500/30 hover:bg-cyan-500/20 cursor-pointer flex items-center gap-1.5"
+                          >
+                            <span className="material-symbols-outlined text-[16px]">bolt</span>
+                            <span>Cargar Acceso Superuser: Ing. Valderrama</span>
+                          </button>
+
+                          <button
+                            type="submit"
+                            className="w-full sm:w-auto px-8 py-3 rounded-xl font-hud text-xs font-black tracking-wider cyber-btn-cyan cursor-pointer shadow-[0_0_20px_rgba(0,240,255,0.3)]"
+                          >
+                            AUTORIZAR ACCESO MAESTRO
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </form>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ── CELL INSPECTION MODAL (TELEMETRÍA EN VIVO DE BAHÍA) ── */}
+          {selectedCell && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
+              <div className="p-6 rounded-3xl border border-cyan-500/40 max-w-lg w-full relative overflow-hidden" style={{
+                background: 'linear-gradient(160deg, rgba(8,16,44,0.98) 0%, rgba(3,7,20,0.99) 100%)',
+                boxShadow: '0 0 50px rgba(0,240,255,0.25)',
+              }}>
+                <div className="flex justify-between items-start pb-3 border-b border-cyan-500/20">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-hud text-xl font-black text-white">{selectedCell.id}</span>
+                      <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
+                        {selectedCell.zone} · {selectedCell.category}
+                      </span>
+                      {selectedCell.isClientAutoOccupied && (
+                        <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 animate-pulse">
+                          AUTO-TICKET CLIENTE
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-xs font-mono text-slate-400 mt-1 block">Telemetría de la Bahía en Tiempo Real</span>
+                  </div>
+                  <button
+                    onClick={() => setSelectedCell(null)}
+                    className="text-slate-400 hover:text-white font-bold text-lg p-1 cursor-pointer"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <div className="flex flex-col gap-3 py-4 font-mono text-xs">
+                  <div className="flex justify-between p-2.5 rounded-lg bg-black/50 border border-white/10">
+                    <span className="text-slate-400">Estado de Bahía:</span>
+                    <strong className={selectedCell.status === 'occupied' ? 'text-rose-400 font-bold' : selectedCell.status === 'blocked' ? 'text-amber-400 font-bold' : 'text-emerald-400 font-bold'}>
+                      {selectedCell.status === 'occupied' ? 'OCUPADO' : selectedCell.status === 'blocked' ? 'EN MANTENIMIENTO' : 'DISPONIBLE'}
+                    </strong>
+                  </div>
+
+                  {selectedCell.status === 'occupied' && (
+                    <>
+                      <div className="flex justify-between p-2.5 rounded-lg bg-black/50 border border-white/10">
+                        <span className="text-slate-400">Matrícula / Placa:</span>
+                        <strong className="text-yellow-300 font-hud text-base tracking-widest">{selectedCell.plate}</strong>
+                      </div>
+
+                      {selectedCell.driverName && (
+                        <div className="flex justify-between p-2.5 rounded-lg bg-black/50 border border-white/10">
+                          <span className="text-slate-400">Conductor / Cliente:</span>
+                          <strong className="text-white font-bold">{selectedCell.driverName} {selectedCell.driverDoc ? `(CC: ${selectedCell.driverDoc})` : ''}</strong>
+                        </div>
+                      )}
+
+                      {selectedCell.ticketId && (
+                        <div className="flex justify-between p-2.5 rounded-lg bg-black/50 border border-white/10">
+                          <span className="text-slate-400">Ticket Digital Emitido:</span>
+                          <strong className="text-cyan-300">{selectedCell.ticketId}</strong>
+                        </div>
+                      )}
+
+                      <div className="flex justify-between p-2.5 rounded-lg bg-black/50 border border-white/10">
+                        <span className="text-slate-400">Hora de Ingreso:</span>
+                        <span className="text-slate-200">{selectedCell.entryTime || '11:15 AM'}</span>
+                      </div>
+
+                      <div className="flex justify-between p-2.5 rounded-lg bg-black/50 border border-white/10">
+                        <span className="text-slate-400">Permanencia en Patio:</span>
+                        <span className="text-cyan-300 font-bold">{selectedCell.duration || '0h 02m'}</span>
+                      </div>
+
+                      <div className="flex justify-between p-2.5 rounded-lg bg-black/50 border border-white/10">
+                        <span className="text-slate-400">Monto Liquidado al Momento:</span>
+                        <span className="text-emerald-400 font-bold text-sm">${selectedCell.currentTotal?.toLocaleString('es-CO') || selectedCell.ratePerHour?.toLocaleString('es-CO') || '4.500'} COP</span>
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-3 border-t border-cyan-500/20">
+                  {selectedCell.status === 'occupied' && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        playCyberAudio('checkout');
+                        const updated = cells.map(c => c.id === selectedCell.id ? { ...c, status: 'free', plate: undefined, driverName: undefined, isClientAutoOccupied: undefined } : c);
+                        setCells(updated);
+                        try { localStorage.setItem('parkflow_cells', JSON.stringify(updated)); } catch(e) {}
+                        showToast(`Bahía ${selectedCell.id} liberada manualmente`, 'success');
+                        setSelectedCell(null);
+                      }}
+                      className="px-4 py-2 rounded-xl font-mono text-xs font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40 hover:bg-rose-500/30 cursor-pointer"
+                    >
+                      LIBERAR BAHÍA MANUALMENTE
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setSelectedCell(null)}
+                    className="px-5 py-2 rounded-xl font-mono text-xs font-bold cyber-btn-cyan cursor-pointer"
+                  >
+                    Cerrar
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── XAMPP MODAL ── */}
+          {isXamppOpen && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+              <div className="p-6 rounded-2xl border border-cyan-500/40 max-w-lg w-full" style={{ background: 'linear-gradient(160deg, rgba(8,16,44,0.98) 0%, rgba(3,7,20,0.99) 100%)' }}>
+                <div className="flex justify-between items-center mb-4 pb-2 border-b border-cyan-500/20">
+                  <div className="font-hud text-sm font-bold text-cyan-300">TELEMETRÍA XAMPP & MYSQL</div>
+                  <button onClick={() => setIsXamppOpen(false)} className="text-slate-400 hover:text-white cursor-pointer font-bold">✕</button>
+                </div>
+                <div className="font-mono text-xs space-y-2 text-slate-300">
+                  <div className="flex justify-between"><span>Apache Web Engine:</span><strong className="text-emerald-400">PORT 80 (ACTIVE)</strong></div>
+                  <div className="flex justify-between"><span>MySQL Relational Core:</span><strong className="text-cyan-400">PORT 3306 (LIVE)</strong></div>
+                  <div className="flex justify-between"><span>Database Name:</span><strong className="text-white">parkflow_db</strong></div>
+                  <div className="p-3 rounded-lg bg-black/70 border border-cyan-500/20 text-[11px] text-cyan-400/80 mt-3">
+                    [SQL_NET] Ping localhost:3306 ... ACK 200 OK<br/>
+                    [STATUS] 50 celdas vinculadas con PHP API en htdocs.
+                  </div>
+                </div>
+                <div className="mt-5 flex justify-end gap-2">
+                  <button onClick={() => setIsXamppOpen(false)} className="px-4 py-2 rounded-xl font-mono text-xs font-bold cyber-btn-cyan cursor-pointer">Cerrar</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── TOAST NOTIFICATION ── */}
+          {toast && (
+            <div className="fixed bottom-6 right-6 z-50 p-4 rounded-xl border border-cyan-500/40 bg-black/90 text-cyan-300 font-mono text-xs flex items-center gap-2 shadow-[0_0_20px_rgba(0,240,255,0.4)]">
+              <span className="material-symbols-outlined text-[18px]">verified</span>
+              <span>{toast.msg}</span>
+            </div>
+          )}
+
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>

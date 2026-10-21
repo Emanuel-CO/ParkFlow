@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useParking } from '../context/ParkingContext.tsx';
 import { ActiveView } from '../types/parking.ts';
+import { playCyberFeedback } from '../utils/audioAlert.ts';
+
 
 export const Sidebar: React.FC = () => {
   const {
@@ -12,6 +14,10 @@ export const Sidebar: React.FC = () => {
     isCapacityCritical,
     isCapacityWarning,
     isDbConnected,
+    userRole,
+    setShowRoleModal,
+    currentUser,
+    handleLogout,
   } = useParking();
 
   const [time, setTime] = useState(new Date());
@@ -23,13 +29,26 @@ export const Sidebar: React.FC = () => {
     return () => { clearInterval(t); clearTimeout(b); };
   }, []);
 
-  const navItems: { id: ActiveView; label: string; sub: string; icon: string; color: string }[] = [
-    { id: 'panel-operativo',       label: 'Panel Operativo',    sub: 'HUD Telemetría 3D',       icon: 'grid_view',     color: 'cyan'   },
-    { id: 'registro-de-entrada',   label: 'Registro Entrada',   sub: 'Escáner Óptico LPR',      icon: 'login',         color: 'emerald'},
-    { id: 'salida-y-cobro',        label: 'Salida y Cobro',     sub: 'Liquidación Quantum',     icon: 'point_of_sale', color: 'violet' },
-    { id: 'tarifas-y-celdas',      label: 'Tarifas y Celdas',   sub: 'Matrices de Control',     icon: 'tune',          color: 'amber'  },
-    { id: 'reportes-y-auditoria',  label: 'Reportes',           sub: 'Ledger Blockchain',       icon: 'analytics',     color: 'cyan'   },
+  const allNavItems: { id: ActiveView; label: string; sub: string; icon: string; color: string }[] = [
+    { id: 'panel-operativo',       label: 'Panel Operativo',     sub: 'HUD Telemetría 3D',       icon: 'grid_view',      color: 'cyan'   },
+    { id: 'portal-cliente',        label: 'Elegir Mi Puesto',    sub: 'Mapa & Auto-Ticket',      icon: 'local_parking',  color: 'emerald'},
+    { id: 'mi-perfil-cliente',     label: 'Mi Perfil Conductor', sub: 'Billetera & Estado',      icon: 'account_circle', color: 'emerald'},
+    { id: 'registro-de-entrada',   label: 'Registro Entrada',    sub: 'Escáner Óptico LPR',      icon: 'login',          color: 'emerald'},
+    { id: 'salida-y-cobro',        label: 'Salida y Cobro',      sub: 'Liquidación Quantum',     icon: 'point_of_sale',  color: 'violet' },
+    { id: 'tarifas-y-celdas',      label: 'Tarifas y Celdas',    sub: 'Matrices de Control',     icon: 'tune',           color: 'amber'  },
+    { id: 'reportes-y-auditoria',  label: 'Reportes',            sub: 'Ledger Blockchain',       icon: 'analytics',      color: 'cyan'   },
   ];
+
+  const navItems = allNavItems.filter(item => {
+    if (userRole === 'cliente') {
+      return ['portal-cliente', 'mi-perfil-cliente'].includes(item.id);
+    }
+    if (userRole === 'operador') {
+      return ['panel-operativo', 'registro-de-entrada', 'salida-y-cobro'].includes(item.id);
+    }
+    // Administrador has all
+    return true;
+  });
 
   const colorMap: Record<string, { text: string; border: string; bg: string; glow: string; shadow: string }> = {
     cyan:    { text: 'text-cyan-300',    border: 'border-cyan-400/40',    bg: 'bg-cyan-500/15',    glow: 'text-cyan-400',    shadow: 'shadow-[0_0_15px_rgba(0,240,255,0.3)]'   },
@@ -92,6 +111,22 @@ export const Sidebar: React.FC = () => {
           <span className={`w-1.5 h-1.5 rounded-full ${isDbConnected ? 'bg-cyan-400 animate-pulse' : 'bg-amber-400'}`} />
           {isDbConnected ? 'SQL LIVE' : 'OFFLINE'}
         </div>
+      </div>
+
+      {/* ── ROLE INDICATOR BANNER ── */}
+      <div className="px-4 py-2 flex items-center justify-between font-mono text-xs" style={{ borderBottom: '1px solid rgba(0,240,255,0.07)', background: 'rgba(0,240,255,0.02)' }}>
+        <span className="text-slate-400 text-[10px] uppercase">Rol Activo:</span>
+        <button
+          onClick={() => { playCyberFeedback('click', 0.15); setShowRoleModal(true); }}
+          className={`px-2 py-0.5 rounded text-[10px] font-hud font-bold border cursor-pointer transition-all hover:scale-105 ${
+            userRole === 'cliente' ? 'bg-emerald-500/15 border-emerald-400 text-emerald-300' :
+            userRole === 'operador' ? 'bg-violet-500/15 border-violet-400 text-violet-300' :
+            'bg-cyan-500/15 border-cyan-400 text-cyan-300'
+          }`}
+          title="Cambiar de rol"
+        >
+          {userRole ? userRole.toUpperCase() : 'SELECCIONAR'}
+        </button>
       </div>
 
       {/* ── OCCUPANCY RADAR MODULE ── */}
@@ -198,7 +233,10 @@ export const Sidebar: React.FC = () => {
           return (
             <button
               key={item.id}
-              onClick={() => setActiveView(item.id)}
+              onClick={() => {
+                playCyberFeedback('click', 0.15);
+                setActiveView(item.id);
+              }}
               className={`sidebar-nav-item relative group flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-left transition-all duration-200 overflow-hidden ${
                 isActive
                   ? `${c.bg} ${c.border} border ${c.shadow}`
@@ -255,7 +293,47 @@ export const Sidebar: React.FC = () => {
             </button>
           );
         })}
+
+        {/* Client Isolation & Security Banner */}
+        {userRole === 'cliente' && (
+          <div className="mt-3 mx-1 p-3 rounded-xl border border-emerald-500/30 bg-emerald-950/25 text-[10px] font-mono">
+            <div className="flex items-center gap-1.5 text-emerald-400 font-bold mb-1">
+              <span className="material-symbols-outlined text-[15px]">verified_user</span>
+              <span>PERFIL PROTEGIDO</span>
+            </div>
+            <p className="text-[9px] text-slate-400 leading-tight">
+              Acceso de conductor aislado de la red interna de taquillas, cobros y servidores.
+            </p>
+          </div>
+        )}
       </nav>
+
+      {/* ── ROLE SWITCH & LOGOUT BUTTONS ── */}
+      <div className="px-4 py-2 flex flex-col gap-1.5" style={{ borderTop: '1px solid rgba(0,240,255,0.08)' }}>
+        <button
+          onClick={() => {
+            playCyberFeedback('click', 0.2);
+            setShowRoleModal(true);
+          }}
+          className="w-full py-2 px-3 rounded-xl font-hud text-[10px] font-black tracking-wider text-slate-200 hover:text-white bg-white/5 hover:bg-cyan-500/20 border border-white/10 hover:border-cyan-400 transition-all flex items-center justify-center gap-2 cursor-pointer shadow-[0_0_15px_rgba(0,0,0,0.5)] hover:shadow-[0_0_20px_rgba(0,240,255,0.25)]"
+        >
+          <span className="material-symbols-outlined text-[16px] text-cyan-400">switch_account</span>
+          <span>CAMBIAR DE ROL</span>
+        </button>
+
+        {currentUser && (
+          <button
+            onClick={() => {
+              playCyberFeedback('click', 0.2);
+              handleLogout();
+            }}
+            className="w-full py-2 px-3 rounded-xl font-hud text-[10px] font-bold tracking-wider text-rose-300 hover:text-white bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/25 hover:border-rose-400 transition-all flex items-center justify-center gap-2 cursor-pointer"
+          >
+            <span className="material-symbols-outlined text-[16px] text-rose-400">logout</span>
+            <span>CERRAR SESIÓN</span>
+          </button>
+        )}
+      </div>
 
       {/* ── TERMINAL FOOTER ── */}
       <div className="px-4 pb-4 pt-3" style={{ borderTop: '1px solid rgba(0,240,255,0.08)' }}>

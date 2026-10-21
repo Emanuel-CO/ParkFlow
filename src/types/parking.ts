@@ -13,9 +13,22 @@ export interface ParkingCell {
   duration?: string;
   currentTotal?: number;
   ratePerHour: number;
-  maintenanceReason?: string;
   notes?: string;
   ticketId?: string;
+  driverName?: string;
+  driverDoc?: string;
+  driverPhone?: string;
+  isClientAutoOccupied?: boolean;
+  occupiedTimestamp?: number;
+}
+
+export interface LiveOccupancyEvent {
+  cellId: string;
+  plate: string;
+  driver: string;
+  ticketId: string;
+  time: string;
+  timestamp: number;
 }
 
 export interface Movement {
@@ -70,9 +83,29 @@ export interface CapacityThresholdSettings {
   soundRepeatInterval: number; // 0 for once, or seconds e.g. 60
 }
 
+export type UserRole = 'cliente' | 'operador' | 'administrador';
+
+export interface UserProfile {
+  role: UserRole;
+  id: string; // Cédula, Carnet o Master ID
+  name: string;
+  plate?: string;
+  phone?: string;
+  badge?: string;
+  shift?: string;
+  level?: string;
+  balance?: number;
+  points?: number;
+  loginTime: string;
+}
+
 export type ActiveView = 
   | 'panel-operativo'
   | 'registro-de-entrada'
   | 'salida-y-cobro'
   | 'tarifas-y-celdas'
-  | 'reportes-y-auditoria';
+  | 'reportes-y-auditoria'
+  | 'portal-cliente'
+  | 'mi-perfil-cliente';
+
+
