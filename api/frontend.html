@@ -770,17 +770,10 @@
                   <span>ZONA CLIENTE SEGURA // AISLADA</span>
                 </div>
               ) : (
-                <>
-                  <div className="flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-hud font-bold border border-emerald-500/40 bg-emerald-500/10 text-emerald-300 shadow-[0_0_12px_rgba(0,255,157,0.2)]">
-                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-                    <span>SISTEMA NOMINAL</span>
-                  </div>
-                  
-                  <button onClick={() => { playCyberAudio('click'); setIsXamppOpen(true); }} className="flex items-center gap-1.5 px-3 py-1 rounded-xl font-mono text-[10px] text-cyan-300 border border-cyan-500/30 bg-cyan-500/10 hover:bg-cyan-500/20 transition-all cursor-pointer">
-                    <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
-                    <span>MySQL :3306 [XAMPP]</span>
-                  </button>
-                </>
+                <div className="flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-hud font-bold border border-emerald-500/40 bg-emerald-500/10 text-emerald-300 shadow-[0_0_12px_rgba(0,255,157,0.2)]">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                  <span>SISTEMA NOMINAL</span>
+                </div>
               )}
             </div>
 

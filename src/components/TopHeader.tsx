@@ -97,35 +97,6 @@ export const TopHeader: React.FC = () => {
               <span className="material-symbols-outlined text-[13px] text-slate-500">memory</span>
               <span>UP: <span className="text-violet-400 font-bold tabular-nums">{formatUptime(uptime)}</span></span>
             </div>
-
-            {/* MySQL / XAMPP Status */}
-            <button
-              onClick={() => {
-                playCyberFeedback('click', 0.2);
-                setIsXamppModalOpen(true);
-              }}
-              type="button"
-              title="Ver telemetría de MySQL en XAMPP"
-              className={`group flex items-center gap-2 px-3 py-1.5 rounded-xl text-[10px] font-mono border transition-all ${
-                isDbConnected
-                  ? 'text-cyan-300 hover:text-cyan-200'
-                  : 'text-amber-300 hover:text-amber-200'
-              }`}
-              style={{
-                background: isDbConnected ? 'rgba(0,240,255,0.06)' : 'rgba(255,183,3,0.06)',
-                border: isDbConnected ? '1px solid rgba(0,240,255,0.25)' : '1px solid rgba(255,183,3,0.25)',
-                boxShadow: isDbConnected ? '0 0 15px rgba(0,240,255,0.1)' : '0 0 15px rgba(255,183,3,0.1)',
-              }}
-            >
-              <span className={`w-2 h-2 rounded-full shrink-0 ${
-                isDbSyncing ? 'bg-amber-400' : isDbConnected ? 'bg-cyan-400 animate-pulse' : 'bg-amber-400'
-              }`} style={isDbSyncing ? { animation: 'spin 1s linear infinite' } : {}} />
-              <span className="font-hud font-bold text-[9px]">MySQL</span>
-              <span className="hidden sm:inline">
-                {isDbSyncing ? 'SYNCING...' : isDbConnected ? ':3306' : 'OFFLINE'}
-              </span>
-              <span className="material-symbols-outlined text-[13px] opacity-60 group-hover:opacity-100 transition-opacity">open_in_new</span>
-            </button>
           </>
         )}
       </div>
