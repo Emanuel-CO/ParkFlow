@@ -272,24 +272,32 @@
     // Generate full 50 cells (Zona A: 30 Carros [A-01 a A-30], Zona B: 20 Motos [B-01 a B-20])
     function generateInitial50Cells() {
       const list = [];
+      const nowMs = Date.now();
       const zoneAOccupied = {
-        'A-01': { plate: 'KLO-892', time: '08:30 AM', duration: '3h 15m', total: 14625 },
-        'A-03': { plate: 'NVY-402', time: '10:15 AM', duration: '1h 30m', total: 9000 },
-        'A-08': { plate: 'MKZ-771', time: '11:10 AM', duration: '0h 35m', total: 4500 },
+        'A-01': { plate: 'KLO-892', time: '08:30 AM', elapsedSec: 3 * 3600 + 15 * 60, total: 14625 },
+        'A-03': { plate: 'NVY-402', time: '10:15 AM', elapsedSec: 1 * 3600 + 30 * 60, total: 9000 },
+        'A-08': { plate: 'MKZ-771', time: '11:10 AM', elapsedSec: 35 * 60, total: 4500 },
       };
       for (let i = 1; i <= 30; i++) {
         const id = `A-${i.toString().padStart(2, '0')}`;
         if (zoneAOccupied[id]) {
+          const occ = zoneAOccupied[id];
+          const entryTs = nowMs - occ.elapsedSec * 1000;
+          const h = Math.floor(occ.elapsedSec / 3600);
+          const m = Math.floor((occ.elapsedSec % 3600) / 60);
+          const s = occ.elapsedSec % 60;
           list.push({
             id,
             zone: 'Zona A',
             category: 'Carro',
             status: 'occupied',
-            plate: zoneAOccupied[id].plate,
-            entryTime: zoneAOccupied[id].time,
-            duration: zoneAOccupied[id].duration,
+            plate: occ.plate,
+            entryTime: occ.time,
+            entryTimestamp: entryTs,
+            occupiedTimestamp: entryTs,
+            duration: `${h}h ${String(m).padStart(2, '0')}m ${String(s).padStart(2, '0')}s`,
             ratePerHour: 4500,
-            currentTotal: zoneAOccupied[id].total,
+            currentTotal: occ.total,
             ticketId: `#TK-A${i.toString().padStart(2, '0')}`,
           });
         } else {
@@ -304,22 +312,29 @@
       }
 
       const zoneBOccupied = {
-        'B-01': { plate: 'MTR-411', time: '08:45 AM', duration: '3h 00m', total: 6600 },
-        'B-03': { plate: 'XYZ-908', time: '09:30 AM', duration: '2h 15m', total: 4950 },
+        'B-01': { plate: 'MTR-411', time: '08:45 AM', elapsedSec: 3 * 3600, total: 6600 },
+        'B-03': { plate: 'XYZ-908', time: '09:30 AM', elapsedSec: 2 * 3600 + 15 * 60, total: 4950 },
       };
       for (let i = 1; i <= 20; i++) {
         const id = `B-${i.toString().padStart(2, '0')}`;
         if (zoneBOccupied[id]) {
+          const occ = zoneBOccupied[id];
+          const entryTs = nowMs - occ.elapsedSec * 1000;
+          const h = Math.floor(occ.elapsedSec / 3600);
+          const m = Math.floor((occ.elapsedSec % 3600) / 60);
+          const s = occ.elapsedSec % 60;
           list.push({
             id,
             zone: 'Zona B',
             category: 'Moto',
             status: 'occupied',
-            plate: zoneBOccupied[id].plate,
-            entryTime: zoneBOccupied[id].time,
-            duration: zoneBOccupied[id].duration,
+            plate: occ.plate,
+            entryTime: occ.time,
+            entryTimestamp: entryTs,
+            occupiedTimestamp: entryTs,
+            duration: `${h}h ${String(m).padStart(2, '0')}m ${String(s).padStart(2, '0')}s`,
             ratePerHour: 2200,
-            currentTotal: zoneBOccupied[id].total,
+            currentTotal: occ.total,
             ticketId: `#TK-B${i.toString().padStart(2, '0')}`,
           });
         } else {
@@ -455,7 +470,15 @@
           const saved = localStorage.getItem('parkflow_cells');
           if (saved) {
             const parsed = JSON.parse(saved);
-            if (Array.isArray(parsed) && parsed.length >= 50) return parsed;
+            if (Array.isArray(parsed) && parsed.length >= 50) {
+              const now = Date.now();
+              return parsed.map(c => {
+                if (c.status === 'occupied' && !c.entryTimestamp) {
+                  return { ...c, entryTimestamp: now - 3600000, occupiedTimestamp: now - 3600000 };
+                }
+                return c;
+              });
+            }
           }
         } catch(e) {}
         const fresh = generateInitial50Cells();
@@ -509,10 +532,44 @@
       const [regPlate, setRegPlate] = useState('');
       const [regCat, setRegCat] = useState('Carro');
 
+      // Helper para calcular permanencia en tiempo real
+      const getLiveDuration = (c) => {
+        if (!c || c.status !== 'occupied') return '--';
+        const ts = c.entryTimestamp || c.occupiedTimestamp;
+        if (!ts) return c.duration || '0h 00m 00s';
+        const diffSec = Math.max(0, Math.floor((Date.now() - ts) / 1000));
+        const h = Math.floor(diffSec / 3600);
+        const m = Math.floor((diffSec % 3600) / 60);
+        const s = diffSec % 60;
+        return `${h}h ${String(m).padStart(2, '0')}m ${String(s).padStart(2, '0')}s`;
+      };
+
       useEffect(() => {
         const t = setInterval(() => {
-          setTime(new Date());
+          const nowDate = new Date();
+          setTime(nowDate);
           setSecondsTicking(s => (s + 1) % 60);
+
+          // Actualización de permanencia en tiempo real segundo a segundo
+          setCells(prev => {
+            let changed = false;
+            const updated = prev.map(c => {
+              if (c.status === 'occupied' && (c.entryTimestamp || c.occupiedTimestamp)) {
+                const ts = c.entryTimestamp || c.occupiedTimestamp;
+                const diffSec = Math.max(0, Math.floor((Date.now() - ts) / 1000));
+                const h = Math.floor(diffSec / 3600);
+                const m = Math.floor((diffSec % 3600) / 60);
+                const s = diffSec % 60;
+                const newDur = `${h}h ${String(m).padStart(2, '0')}m ${String(s).padStart(2, '0')}s`;
+                if (newDur !== c.duration) {
+                  changed = true;
+                  return { ...c, duration: newDur };
+                }
+              }
+              return c;
+            });
+            return changed ? updated : prev;
+          });
         }, 1000);
 
         // Cross-tab and real-time storage listener
@@ -883,21 +940,32 @@
       // Client Occupy Action
       const handleClientOccupy = (e) => {
         e.preventDefault();
-        if (!clientPlate || clientPlate.length < 3) {
+        const cleanPlate = clientPlate.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+        if (!cleanPlate || cleanPlate.length < 3) {
           showToast('Por favor ingrese su número de placa', 'warning');
           return;
         }
+
+        // Anti-Passback: Validar si la placa ya se encuentra dentro del parqueadero
+        const alreadyInside = cells.find(c => c.status === 'occupied' && c.plate && c.plate.trim().toUpperCase().replace(/[^A-Z0-9]/g, '') === cleanPlate);
+        if (alreadyInside) {
+          playCyberAudio('laser');
+          showToast(`BLOQUEO ANTI-PASSBACK: El vehículo ${clientPlate.toUpperCase()} ya se encuentra registrado en el puesto ${alreadyInside.id}. No se permite doble registro.`, 'error');
+          return;
+        }
+
         if (!clientSelectedSlot) {
           showToast('Seleccione un puesto libre en el mapa', 'warning');
           return;
         }
         playCyberAudio('checkout');
         const rate = clientVehicleType === 'Moto' ? 2200 : clientVehicleType === 'Camioneta' ? 6000 : 4500;
-        const cleanPlate = clientPlate.trim().toUpperCase();
         const driverName = currentUser?.name || clientRegName || 'Conductor Registrado';
         const driverDoc = currentUser?.id || currentUser?.identification || clientRegDoc || clientLoginDoc || '1020304050';
         const driverPhone = currentUser?.phone || clientRegPhone || '310 987 6543';
-        const timeStr = time.toLocaleTimeString();
+        const now = new Date();
+        const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        const nowMs = Date.now();
 
         const newTicket = {
           ticketId: `#PK-CLI-${Math.floor(1000 + Math.random() * 9000)}`,
@@ -905,6 +973,7 @@
           cellId: clientSelectedSlot,
           category: clientVehicleType,
           entryTime: timeStr,
+          entryTimestamp: nowMs,
           ratePerHour: rate,
           driverName: driverName,
           driverDoc: driverDoc,
@@ -916,7 +985,9 @@
           status: 'occupied',
           plate: cleanPlate,
           entryTime: timeStr,
-          duration: '0h 01m',
+          entryTimestamp: nowMs,
+          occupiedTimestamp: nowMs,
+          duration: '0h 00m 00s',
           currentTotal: rate,
           ratePerHour: rate,
           driverName: driverName,
@@ -924,7 +995,6 @@
           driverPhone: driverPhone,
           ticketId: newTicket.ticketId,
           isClientAutoOccupied: true,
-          occupiedTimestamp: Date.now(),
         } : c);
 
         setCells(updatedCells);
@@ -937,7 +1007,7 @@
           ticketId: newTicket.ticketId,
           category: clientVehicleType,
           time: timeStr,
-          timestamp: Date.now(),
+          timestamp: nowMs,
         };
         setLastLiveEvent(evData);
 
@@ -947,14 +1017,25 @@
         } catch(err) {}
 
         setClientIssuedTicket(newTicket);
-        showToast(`¡Puesto ${clientSelectedSlot} asignado exitosamente! Ticket ${newTicket.ticketId} emitido`, 'success');
+        showToast(`¡Puesto ${clientSelectedSlot} asignado exitosamente! Ticket ${newTicket.ticketId} emitido. Permanencia activa.`, 'success');
       };
 
       // Client Checkout Simulation
       const handleClientPay = (plate) => {
         playCyberAudio('checkout');
         setClientPaymentSuccess(true);
-        const updated = cells.map(c => c.plate === plate ? { ...c, status: 'free', plate: undefined, driverName: undefined, isClientAutoOccupied: undefined } : c);
+        const clean = plate.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+        const updated = cells.map(c => (c.plate && c.plate.trim().toUpperCase().replace(/[^A-Z0-9]/g, '') === clean) ? {
+          ...c,
+          status: 'free',
+          plate: undefined,
+          driverName: undefined,
+          isClientAutoOccupied: undefined,
+          entryTimestamp: undefined,
+          occupiedTimestamp: undefined,
+          duration: undefined,
+          currentTotal: undefined
+        } : c);
         setCells(updated);
         try { localStorage.setItem('parkflow_cells', JSON.stringify(updated)); } catch(e) {}
         showToast('¡Pago en línea completado! 15 min de tolerancia para salir.', 'success');
@@ -963,7 +1044,17 @@
       const handleConfirmPayment = () => {
         playCyberAudio('checkout');
         setCheckoutSuccess(true);
-        const updated = cells.map(c => c.id === 'A-01' ? { ...c, status: 'free', plate: undefined, duration: undefined, driverName: undefined, isClientAutoOccupied: undefined } : c);
+        const updated = cells.map(c => c.id === 'A-01' ? {
+          ...c,
+          status: 'free',
+          plate: undefined,
+          duration: undefined,
+          driverName: undefined,
+          isClientAutoOccupied: undefined,
+          entryTimestamp: undefined,
+          occupiedTimestamp: undefined,
+          currentTotal: undefined
+        } : c);
         setCells(updated);
         try { localStorage.setItem('parkflow_cells', JSON.stringify(updated)); } catch(e) {}
         showToast('¡Pago liquidado! Celda A-01 liberada y barrera abierta.', 'success');
@@ -971,17 +1062,54 @@
 
       const handleRegisterEntry = (e) => {
         e.preventDefault();
-        if (!regPlate || regPlate.length < 3) {
+        const clean = regPlate.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+        if (!clean || clean.length < 3) {
           showToast('Ingrese una placa válida', 'warning');
           return;
         }
-        playCyberAudio('checkout');
-        const freeCell = cells.find(c => c.status === 'free');
-        if (freeCell) {
-          setCells(prev => prev.map(c => c.id === freeCell.id ? { ...c, status: 'occupied', plate: regPlate, entryTime: '12:40 PM', duration: '0h 01m', currentTotal: 4500 } : c));
-          showToast(`Vehículo ${regPlate} asignado a celda ${freeCell.id}`, 'success');
-          setRegPlate('');
+
+        // Anti-Passback: Validar si la placa ya se encuentra dentro del patio
+        const alreadyInside = cells.find(c => c.status === 'occupied' && c.plate && c.plate.trim().toUpperCase().replace(/[^A-Z0-9]/g, '') === clean);
+        if (alreadyInside) {
+          playCyberAudio('laser');
+          showToast(`BLOQUEO ANTI-PASSBACK: El vehículo con placa ${regPlate.toUpperCase()} ya se encuentra registrado en la bahía ${alreadyInside.id}. No se permite registrar una misma placa dos veces.`, 'error');
+          return;
         }
+
+        const targetZone = (regCat === 'Moto') ? 'Zona B' : 'Zona A';
+        const freeCell = cells.find(c => c.zone === targetZone && c.status === 'free') || cells.find(c => c.status === 'free');
+        if (!freeCell) {
+          playCyberAudio('laser');
+          showToast('No hay celdas disponibles para esta categoría en este momento', 'error');
+          return;
+        }
+
+        playCyberAudio('checkout');
+        const now = new Date();
+        const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        const entryTs = Date.now();
+        const rate = (regCat === 'Moto') ? 2200 : 4500;
+        const initialTotal = Math.round(rate * 0.55);
+        const ticketNum = `#PF-${now.getFullYear()}-${Math.floor(10000 + Math.random() * 90000)}`;
+
+        const updatedCells = cells.map(c => c.id === freeCell.id ? {
+          ...c,
+          status: 'occupied',
+          plate: regPlate.toUpperCase(),
+          category: regCat,
+          entryTime: timeStr,
+          entryTimestamp: entryTs,
+          occupiedTimestamp: entryTs,
+          duration: '0h 00m 00s',
+          currentTotal: initialTotal,
+          ratePerHour: rate,
+          ticketId: ticketNum,
+        } : c);
+
+        setCells(updatedCells);
+        try { localStorage.setItem('parkflow_cells', JSON.stringify(updatedCells)); } catch(e) {}
+        showToast(`✅ Vehículo ${regPlate.toUpperCase()} asignado a bahía ${freeCell.id}. Conteo de permanencia activo.`, 'success');
+        setRegPlate('');
       };
 
       // Filtered navigation based on Role
@@ -1336,6 +1464,22 @@
                         required
                         className="w-full h-13 rounded-xl px-4 font-mono text-2xl font-black tracking-widest text-center text-cyan-300 border border-cyan-500/40 bg-black/60 focus:outline-none focus:border-cyan-400"
                       />
+                      {(() => {
+                        const clean = clientPlate.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+                        const duplicate = clean.length >= 3 && cells.find(c => c.status === 'occupied' && c.plate && c.plate.trim().toUpperCase().replace(/[^A-Z0-9]/g, '') === clean);
+                        if (duplicate) {
+                          return (
+                            <div className="mt-2 p-3 rounded-xl border border-rose-500/60 bg-rose-950/70 text-rose-300 font-mono text-xs flex items-center gap-2 animate-fadeIn">
+                              <span className="material-symbols-outlined text-rose-400 text-[18px] shrink-0 animate-pulse">report</span>
+                              <div>
+                                <strong className="text-rose-200 block font-hud text-[10px]">BLOQUEO ANTI-PASSBACK</strong>
+                                <span>Tu vehículo <strong>{duplicate.plate}</strong> ya está en patio (Puesto {duplicate.id} • Permanencia: {duplicate.duration}). No puedes registrarlo dos veces.</span>
+                              </div>
+                            </div>
+                          );
+                        }
+                        return null;
+                      })()}
                     </div>
 
                     <div>
@@ -1368,7 +1512,11 @@
 
                     <button
                       type="submit"
-                      className="mt-2 h-13 rounded-xl font-hud text-xs font-black tracking-wider cyber-btn-emerald cursor-pointer shadow-[0_0_20px_rgba(0,255,157,0.3)]"
+                      disabled={(() => {
+                        const clean = clientPlate.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+                        return clean.length >= 3 && !!cells.find(c => c.status === 'occupied' && c.plate && c.plate.trim().toUpperCase().replace(/[^A-Z0-9]/g, '') === clean);
+                      })()}
+                      className="mt-2 h-13 rounded-xl font-hud text-xs font-black tracking-wider cyber-btn-emerald cursor-pointer shadow-[0_0_20px_rgba(0,255,157,0.3)] disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                       OCUPAR PUESTO {clientSelectedSlot} & GENERAR TICKET
                     </button>
@@ -1403,6 +1551,15 @@
                           <div className="flex justify-between">
                             <span className="text-slate-400">Hora de Ingreso:</span>
                             <span className="font-bold text-white">{clientIssuedTicket.entryTime}</span>
+                          </div>
+                          <div className="flex justify-between items-center bg-cyan-950/40 p-2 rounded-lg border border-cyan-500/30">
+                            <span className="text-cyan-300 flex items-center gap-1 font-bold text-[11px]">
+                              <span className="material-symbols-outlined text-[15px] animate-spin">timer</span>
+                              Permanencia en Patio:
+                            </span>
+                            <span className="font-bold text-emerald-300 text-sm font-hud">
+                              {cells.find(c => c.id === clientIssuedTicket.cellId)?.duration || '0h 00m 00s'}
+                            </span>
                           </div>
                           <div className="flex justify-between">
                             <span className="text-slate-400">Tarifa por Hora:</span>
@@ -1878,10 +2035,13 @@
                             }`}>
                               {isOcc ? c.plate : isBlk ? 'MANT.' : 'LIBRE'}
                             </span>
-                            {isOcc && (c.driverName || c.entryTime) ? (
-                              <span className="text-[8px] font-mono text-slate-400 mt-0.5 truncate max-w-full">
-                                {c.driverName ? c.driverName.split(' ')[0] : c.entryTime}
+                            {isOcc ? (
+                              <span className="text-[8px] font-mono text-cyan-300 font-bold mt-0.5 truncate max-w-full flex items-center justify-center gap-0.5">
+                                <span className="material-symbols-outlined text-[10px] text-cyan-400">timer</span>
+                                {c.duration || '0h 00m 00s'}
                               </span>
+                            ) : isBlk ? (
+                              <span className="text-[8px] font-mono text-amber-500/80 mt-0.5">MANT.</span>
                             ) : (
                               <span className="text-[8px] font-mono text-emerald-500/70 mt-0.5">
                                 {isMoto ? '$2.2k/h' : '$4.5k/h'}
@@ -2340,6 +2500,22 @@
                       onChange={e => setRegPlate(e.target.value.toUpperCase())}
                       className="w-full h-14 rounded-xl px-4 font-mono text-3xl font-black tracking-widest text-center text-cyan-300 border border-cyan-500/40 bg-black/60 focus:outline-none focus:border-cyan-400"
                     />
+                    {(() => {
+                      const clean = regPlate.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+                      const duplicate = clean.length >= 3 && cells.find(c => c.status === 'occupied' && c.plate && c.plate.trim().toUpperCase().replace(/[^A-Z0-9]/g, '') === clean);
+                      if (duplicate) {
+                        return (
+                          <div className="mt-3 p-3.5 rounded-xl border border-rose-500/60 bg-rose-950/70 text-rose-300 font-mono text-xs flex items-center gap-2.5 animate-fadeIn">
+                            <span className="material-symbols-outlined text-rose-400 text-[22px] shrink-0 animate-pulse">report</span>
+                            <div className="flex-1">
+                              <strong className="text-rose-200 block font-hud text-[11px]">BLOQUEO ANTI-PASSBACK: VEHÍCULO YA EN PATIO</strong>
+                              <span>La placa <strong>{duplicate.plate}</strong> ya se encuentra en la bahía <strong>{duplicate.id}</strong> (Permanencia: {duplicate.duration}). No se permite registrar una misma placa dos veces mientras esté activa en el parqueadero.</span>
+                            </div>
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
@@ -2357,7 +2533,14 @@
                     ))}
                   </div>
 
-                  <button type="submit" className="h-13 rounded-xl font-hud text-xs font-black tracking-wider cyber-btn-emerald cursor-pointer">
+                  <button
+                    type="submit"
+                    disabled={(() => {
+                      const clean = regPlate.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+                      return clean.length >= 3 && !!cells.find(c => c.status === 'occupied' && c.plate && c.plate.trim().toUpperCase().replace(/[^A-Z0-9]/g, '') === clean);
+                    })()}
+                    className="h-13 rounded-xl font-hud text-xs font-black tracking-wider cyber-btn-emerald cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
                     GENERAR TICKET & APERTURA DE BARRERA
                   </button>
                 </form>
@@ -3305,7 +3488,7 @@
 
                       <div className="flex justify-between p-2.5 rounded-lg bg-black/50 border border-white/10">
                         <span className="text-slate-400">Permanencia en Patio:</span>
-                        <span className="text-cyan-300 font-bold">{selectedCell.duration || '0h 02m'}</span>
+                        <span className="text-cyan-300 font-bold font-mono">{cells.find(c => c.id === selectedCell.id)?.duration || selectedCell.duration || '0h 00m 00s'}</span>
                       </div>
 
                       <div className="flex justify-between p-2.5 rounded-lg bg-black/50 border border-white/10">

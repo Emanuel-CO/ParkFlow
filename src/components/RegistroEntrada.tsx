@@ -57,9 +57,13 @@ export const RegistroEntrada: React.FC = () => {
   };
 
   // Anti-passback check
-  const isDuplicate = cells.some(
-    (c) => c.status === 'occupied' && c.plate?.toUpperCase() === plate.toUpperCase().trim()
-  );
+  const cleanPlateInput = plate.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const duplicateCell = cleanPlateInput.length >= 3
+    ? cells.find(
+        (c) => c.status === 'occupied' && c.plate && c.plate.trim().toUpperCase().replace(/[^A-Z0-9]/g, '') === cleanPlateInput
+      )
+    : undefined;
+  const isDuplicate = !!duplicateCell;
 
   const handleQuickTag = (tag: string) => {
     if (!notes.includes(tag)) {
@@ -75,7 +79,7 @@ export const RegistroEntrada: React.FC = () => {
     }
     if (isDuplicate) {
       playCyberFeedback('laser', 0.35);
-      showToast('BLOQUEO ANTI-PASSBACK: El vehículo ya figura en las instalaciones', 'error');
+      showToast(`BLOQUEO ANTI-PASSBACK: El vehículo ${plate} ya se encuentra activo en patio (Bahía ${duplicateCell?.id}). No se puede registrar dos veces.`, 'error');
       return;
     }
 
@@ -238,7 +242,7 @@ export const RegistroEntrada: React.FC = () => {
                   <div className="flex items-center gap-2">
                     <span className="material-symbols-outlined text-[20px] text-rose-400 animate-pulse">report</span>
                     <span className="font-mono text-xs font-bold">
-                      ALERTA ANTI-PASSBACK: El vehículo {plate} ya se encuentra activo en patio.
+                      ALERTA ANTI-PASSBACK: El vehículo {plate} ya se encuentra activo en patio ({duplicateCell?.id} • Permanencia: {duplicateCell?.duration}).
                     </span>
                   </div>
                   <span className="font-hud text-xs font-black text-rose-400">BLOQUEADO</span>

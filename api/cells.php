@@ -42,7 +42,8 @@ if ($method === 'GET') {
                 $diffSec = max(0, ($nowMs - $entryTs) / 1000);
                 $hours = floor($diffSec / 3600);
                 $minutes = floor(($diffSec % 3600) / 60);
-                $duration = "{$hours}h " . str_pad($minutes, 2, '0', STR_PAD_LEFT) . "m";
+                $seconds = $diffSec % 60;
+                $duration = "{$hours}h " . str_pad($minutes, 2, '0', STR_PAD_LEFT) . "m " . str_pad($seconds, 2, '0', STR_PAD_LEFT) . "s";
 
                 if ($hours == 0) {
                     $currentTotal = $minFraction;

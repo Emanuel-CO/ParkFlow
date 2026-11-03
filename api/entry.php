@@ -29,13 +29,20 @@ try {
     $pdo->beginTransaction();
 
     // 1. Anti-Passback: Comprobar si la placa ya se encuentra en patio
-    $checkStmt = $pdo->prepare("SELECT `id`, `plate` FROM `cells` WHERE `status` = 'occupied' AND UPPER(`plate`) = ?");
-    $checkStmt->execute([$plate]);
-    $alreadyParked = $checkStmt->fetch();
+    $cleanPlate = preg_replace('/[^A-Z0-9]/i', '', $plate);
+    $checkStmt = $pdo->query("SELECT `id`, `plate` FROM `cells` WHERE `status` = 'occupied'");
+    $alreadyParked = null;
+    while ($row = $checkStmt->fetch()) {
+        $rowClean = preg_replace('/[^A-Z0-9]/i', '', $row['plate'] ?? '');
+        if (!empty($rowClean) && strtoupper($rowClean) === strtoupper($cleanPlate)) {
+            $alreadyParked = $row;
+            break;
+        }
+    }
 
     if ($alreadyParked) {
         $pdo->rollBack();
-        sendError("ALERTA Anti-Passback: El vehículo {$plate} ya está registrado en la celda {$alreadyParked['id']}.", 409);
+        sendError("ALERTA Anti-Passback: El vehículo {$plate} ya está registrado en la celda {$alreadyParked['id']}. No se permite registrar una misma placa dos veces.", 409);
     }
 
     // 2. Obtener tarifa para esta categoría
@@ -94,7 +101,7 @@ try {
             `plate` = ?,
             `entry_time` = ?,
             `entry_timestamp` = ?,
-            `duration` = '0h 01m',
+            `duration` = '0h 00m 00s',
             `current_total` = ?,
             `rate_per_hour` = ?,
             `ticket_id` = ?,

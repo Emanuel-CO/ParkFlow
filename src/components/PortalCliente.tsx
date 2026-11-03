@@ -33,6 +33,13 @@ export const PortalCliente: React.FC = () => {
       showToast('Por favor ingrese su matrícula / placa', 'warning');
       return;
     }
+    const cleanPlate = plate.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const alreadyInside = cells.find(c => c.status === 'occupied' && c.plate && c.plate.trim().toUpperCase().replace(/[^A-Z0-9]/g, '') === cleanPlate);
+    if (alreadyInside) {
+      playCyberFeedback('laser', 0.35);
+      showToast(`BLOQUEO ANTI-PASSBACK: El vehículo ${plate.toUpperCase()} ya se encuentra registrado en el puesto ${alreadyInside.id}. No se permite registrar una misma placa dos veces.`, 'error');
+      return;
+    }
     if (!selectedBay) {
       showToast('Seleccione un puesto libre en el mapa', 'warning');
       return;
@@ -238,6 +245,22 @@ export const PortalCliente: React.FC = () => {
               required
               className="w-full h-14 rounded-xl px-4 font-mono text-3xl font-black tracking-widest text-center text-cyan-300 border border-cyan-500/40 bg-black/60 focus:outline-none focus:border-cyan-400"
             />
+            {(() => {
+              const clean = plate.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+              const duplicate = clean.length >= 3 && cells.find(c => c.status === 'occupied' && c.plate && c.plate.trim().toUpperCase().replace(/[^A-Z0-9]/g, '') === clean);
+              if (duplicate) {
+                return (
+                  <div className="mt-2 p-3 rounded-xl border border-rose-500/60 bg-rose-950/70 text-rose-300 font-mono text-xs flex items-center gap-2 animate-fadeIn">
+                    <span className="material-symbols-outlined text-rose-400 text-[18px] shrink-0 animate-pulse">report</span>
+                    <div>
+                      <strong className="text-rose-200 block font-hud text-[10px]">BLOQUEO ANTI-PASSBACK</strong>
+                      <span>Tu vehículo <strong>{duplicate.plate}</strong> ya está en patio (Puesto {duplicate.id} • Permanencia: {duplicate.duration}). No puedes registrarlo dos veces.</span>
+                    </div>
+                  </div>
+                );
+              }
+              return null;
+            })()}
           </div>
 
           <div>
@@ -270,7 +293,11 @@ export const PortalCliente: React.FC = () => {
 
           <button
             type="submit"
-            className="mt-2 h-14 rounded-xl font-hud text-xs font-black tracking-wider cyber-btn-emerald cursor-pointer shadow-[0_0_20px_rgba(0,255,157,0.3)] flex items-center justify-center gap-2"
+            disabled={(() => {
+              const clean = plate.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+              return clean.length >= 3 && !!cells.find(c => c.status === 'occupied' && c.plate && c.plate.trim().toUpperCase().replace(/[^A-Z0-9]/g, '') === clean);
+            })()}
+            className="mt-2 h-14 rounded-xl font-hud text-xs font-black tracking-wider cyber-btn-emerald cursor-pointer shadow-[0_0_20px_rgba(0,255,157,0.3)] flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <span className="material-symbols-outlined text-[20px]">check_circle</span>
             <span>OCUPAR PUESTO {selectedBay} & GENERAR TICKET</span>
@@ -309,6 +336,15 @@ export const PortalCliente: React.FC = () => {
                 <div className="flex justify-between">
                   <span className="text-slate-400">Hora de Ingreso:</span>
                   <span className="font-bold text-white">{issuedTicket.entryTime}</span>
+                </div>
+                <div className="flex justify-between items-center bg-cyan-950/40 p-2 rounded-lg border border-cyan-500/30 font-mono">
+                  <span className="text-cyan-300 flex items-center gap-1 font-bold text-[11px]">
+                    <span className="material-symbols-outlined text-[15px] animate-spin">timer</span>
+                    Permanencia en Patio:
+                  </span>
+                  <span className="font-bold text-emerald-300 text-sm font-hud">
+                    {cells.find(c => c.id === issuedTicket.cellId)?.duration || '0h 00m 00s'}
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-400">Tarifa por Hora:</span>

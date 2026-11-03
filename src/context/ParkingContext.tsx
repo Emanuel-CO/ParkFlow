@@ -391,6 +391,27 @@ export const ParkingProvider: React.FC<{ children: ReactNode }> = ({ children })
     const updateTime = () => {
       const now = new Date();
       setCurrentTimeString(now.toLocaleTimeString('es-CO', { hour12: true }));
+
+      // Actualización de permanencia en tiempo real para todas las celdas ocupadas
+      setCells((prev) => {
+        let hasChanges = false;
+        const updated = prev.map((c) => {
+          if (c.status === 'occupied' && (c.entryTimestamp || c.occupiedTimestamp)) {
+            const ts = c.entryTimestamp || c.occupiedTimestamp!;
+            const diffSec = Math.max(0, Math.floor((Date.now() - ts) / 1000));
+            const h = Math.floor(diffSec / 3600);
+            const m = Math.floor((diffSec % 3600) / 60);
+            const s = diffSec % 60;
+            const newDuration = `${h}h ${String(m).padStart(2, '0')}m ${String(s).padStart(2, '0')}s`;
+            if (newDuration !== c.duration) {
+              hasChanges = true;
+              return { ...c, duration: newDuration };
+            }
+          }
+          return c;
+        });
+        return hasChanges ? updated : prev;
+      });
     };
     updateTime();
     const interval = setInterval(updateTime, 1000);
@@ -732,9 +753,10 @@ export const ParkingProvider: React.FC<{ children: ReactNode }> = ({ children })
       }
 
       // Anti-passback check: Check if vehicle is already inside
-      const existingInPatio = cells.find((c) => c.status === 'occupied' && c.plate?.toUpperCase() === sanitizedPlate);
+      const cleanPlate = sanitizedPlate.replace(/[^A-Z0-9]/g, '');
+      const existingInPatio = cells.find((c) => c.status === 'occupied' && c.plate && c.plate.trim().toUpperCase().replace(/[^A-Z0-9]/g, '') === cleanPlate);
       if (existingInPatio) {
-        showToast(`ALERTA Anti-Passback: El vehículo ${sanitizedPlate} ya está en la celda ${existingInPatio.id}`, 'error');
+        showToast(`ALERTA Anti-Passback: El vehículo ${sanitizedPlate} ya está registrado en la celda ${existingInPatio.id}. No se permite registrar una misma placa dos veces.`, 'error');
         return { success: false, error: 'Vehículo ya en patio' };
       }
 
@@ -777,7 +799,8 @@ export const ParkingProvider: React.FC<{ children: ReactNode }> = ({ children })
                 category,
                 entryTime: timeStr,
                 entryTimestamp: Date.now(),
-                duration: '0h 01m',
+                occupiedTimestamp: Date.now(),
+                duration: '0h 00m 00s',
                 currentTotal: currentTariff.minFraction,
                 ratePerHour: currentTariff.ratePerHour,
                 ticketId: ticketNum,
@@ -851,6 +874,13 @@ export const ParkingProvider: React.FC<{ children: ReactNode }> = ({ children })
       driverPhone?: string
     ) => {
       const sanitizedPlate = plateInput.trim().toUpperCase();
+      const cleanPlate = sanitizedPlate.replace(/[^A-Z0-9]/g, '');
+      const existingInPatio = cells.find((c) => c.status === 'occupied' && c.plate && c.plate.trim().toUpperCase().replace(/[^A-Z0-9]/g, '') === cleanPlate);
+      if (existingInPatio) {
+        showToast(`ALERTA Anti-Passback: El vehículo ${sanitizedPlate} ya está registrado en la celda ${existingInPatio.id}. No se permite registrar una misma placa dos veces.`, 'error');
+        return { success: false, error: 'Vehículo ya en patio' };
+      }
+
       const now = new Date();
       const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')} ${now.getHours() >= 12 ? 'PM' : 'AM'}`;
       const ticketNum = `#PK-CLI-${Math.floor(1000 + Math.random() * 9000)}`;
@@ -871,7 +901,7 @@ export const ParkingProvider: React.FC<{ children: ReactNode }> = ({ children })
               entryTime: timeStr,
               entryTimestamp: Date.now(),
               occupiedTimestamp: Date.now(),
-              duration: '0h 01m',
+              duration: '0h 00m 00s',
               currentTotal: currentTariff.minFraction,
               ratePerHour: currentTariff.ratePerHour,
               ticketId: ticketNum,
