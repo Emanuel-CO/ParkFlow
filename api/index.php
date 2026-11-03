@@ -221,6 +221,20 @@ if ($isDbConnected) {
             Endpoint de salud y métricas para verificar conectividad con Apache, PHP y MySQL.
           </p>
         </div>
+
+        <!-- Endpoint 7: Auth & Registro -->
+        <div class="p-5 rounded-2xl bg-slate-900/60 border border-slate-800 hover:border-slate-700 transition space-y-3">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <span class="px-2 py-0.5 rounded text-[11px] font-bold bg-purple-500/10 text-purple-400 border border-purple-500/20 font-mono">POST/GET</span>
+              <a href="auth.php" target="_blank" class="font-mono text-sm font-semibold text-white hover:text-indigo-400 underline decoration-slate-700">/auth.php</a>
+            </div>
+            <a href="auth.php" target="_blank" class="text-xs text-indigo-400 hover:underline">Probar &rarr;</a>
+          </div>
+          <p class="text-xs text-slate-400 leading-relaxed">
+            Registro e inicio de sesión seguro con contraseñas encriptadas en BCRYPT, validación estricta de duplicados (Cédula, Teléfono y Contraseña única entre clientes) y control de acceso basado en roles.
+          </p>
+        </div>
       </div>
     </div>
 

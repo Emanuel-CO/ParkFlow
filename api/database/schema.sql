@@ -77,3 +77,20 @@ CREATE TABLE IF NOT EXISTS `settings` (
     `setting_value` TEXT NOT NULL,
     `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 6. Tabla de Usuarios y Autenticación Segura (Clientes, Operadores y Administradores)
+CREATE TABLE IF NOT EXISTS `users` (
+    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `identification` VARCHAR(50) NOT NULL UNIQUE,
+    `name` VARCHAR(100) NOT NULL,
+    `phone` VARCHAR(50) NOT NULL UNIQUE,
+    `plate` VARCHAR(20) NULL,
+    `role` ENUM('cliente', 'operador', 'administrador') NOT NULL DEFAULT 'cliente',
+    `password_hash` VARCHAR(255) NOT NULL,
+    `password_signature` VARCHAR(64) NOT NULL,
+    `badge` VARCHAR(50) NULL,
+    `shift` VARCHAR(50) NULL,
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    `last_login` TIMESTAMP NULL ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+

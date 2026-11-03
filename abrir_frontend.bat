@@ -17,14 +17,14 @@ echo.
 echo [OK] Si Apache esta activo en XAMPP, se cargara desde localhost.
 echo [INFO] Tambien puedes abrir directamente: preview.html con doble clic.
 echo.
-echo Roles listos para probar:
-echo   - CLIENTE (Cedula, Placa, Seleccion de Puesto y Auto-Ticket Digital)
-echo   - OPERADOR (Carnet OP-418, PIN, Turno taquilla y barreras)
-echo   - ADMINISTRADOR (Mapa con Telemetria en Tiempo Real + Graficas de Ventas Hoy y Mes)
+echo Roles listos para probar con Autenticacion Segura:
+echo   - CLIENTE (Registro primer ingreso con Cedula, Telefono y Contrasena unica, o Login seguro)
+echo   - OPERADOR (Carnet OP-418, Clave/PIN de Taquilla, Turno y barreras autorizadas)
+echo   - ADMINISTRADOR (Usuario admin.master, Llave Cuantica, Token 2FA OTP, Telemetria y Graficas)
 echo.
-echo Novedades activas:
-echo   * Telemetria en Vivo: Cuando el cliente ocupa un puesto, el Administrador
-echo     lo ve reflejado al instante en el mapa digital con alerta sonica y badge NUEVO.
-echo   * Graficas de Estadisticas: Curva de ingresos por hora de hoy y acumulado del mes.
+echo Novedades de Seguridad:
+echo   * Registro seguro de clientes con validacion de duplicados en Cedula, Telefono y Contrasena.
+echo   * Contrasenas cifradas con BCRYPT y SHA-256 en MySQL (parkflow_db).
+echo   * Control estricto de roles: Nadie puede entrar como Admin u Operador sin cuenta autorizada.
 echo.
 pause

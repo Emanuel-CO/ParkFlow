@@ -147,6 +147,50 @@ try {
         }
     }
 
+    // 8. Semilla de Usuarios Autorizados (Admin, Operador, Cliente inicial)
+    $usersCount = $pdo->query("SELECT COUNT(*) FROM `users`")->fetchColumn();
+    if ($usersCount == 0) {
+        $stmtUser = $pdo->prepare("INSERT INTO `users` (`identification`, `name`, `phone`, `plate`, `role`, `password_hash`, `password_signature`, `badge`, `shift`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+        $initialUsers = [
+            [
+                'admin.master',
+                'Ing. Valderrama (Admin Root)',
+                '3001234567',
+                'ADM-001',
+                'administrador',
+                password_hash('AdminMaster2099!', PASSWORD_BCRYPT),
+                hash('sha256', 'AdminMaster2099!'),
+                'ROOT-01',
+                'Turno Maestro 24/7'
+            ],
+            [
+                'OP-418',
+                'Carlos Rojas',
+                '3105554180',
+                'OPR-418',
+                'operador',
+                password_hash('Operador4180*', PASSWORD_BCRYPT),
+                hash('sha256', 'Operador4180*'),
+                'OP-418',
+                'Turno Mañana [06:00 - 14:00]'
+            ],
+            [
+                '1020304050',
+                'Alejandro Vélez',
+                '3109876543',
+                'KLO-892',
+                'cliente',
+                password_hash('Cliente2099!', PASSWORD_BCRYPT),
+                hash('sha256', 'Cliente2099!'),
+                'CLI-1020',
+                null
+            ]
+        ];
+        foreach ($initialUsers as $u) {
+            $stmtUser->execute($u);
+        }
+    }
+
     sendResponse([
         'success' => true,
         'message' => '¡Base de datos `parkflow_db` configurada e inicializada exitosamente en MySQL (XAMPP)!',
@@ -157,6 +201,7 @@ try {
             'tariffs' => (int)$pdo->query("SELECT COUNT(*) FROM `tariffs`")->fetchColumn(),
             'movements' => (int)$pdo->query("SELECT COUNT(*) FROM `movements`")->fetchColumn(),
             'transactions' => (int)$pdo->query("SELECT COUNT(*) FROM `transactions`")->fetchColumn(),
+            'users' => (int)$pdo->query("SELECT COUNT(*) FROM `users`")->fetchColumn(),
         ]
     ]);
 
