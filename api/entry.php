@@ -20,6 +20,19 @@ $plate = strtoupper(trim($input['plate'] ?? ''));
 $category = trim($input['category'] ?? 'Carro');
 $requestedCellId = trim($input['requestedCellId'] ?? '');
 $notes = trim($input['notes'] ?? '');
+$driverName = trim($input['driverName'] ?? '');
+$driverDoc = trim($input['driverDoc'] ?? '');
+$driverPhone = trim($input['driverPhone'] ?? '');
+
+$customerDetails = [];
+if (!empty($driverName)) $customerDetails[] = "Cliente: {$driverName}";
+if (!empty($driverDoc)) $customerDetails[] = "Doc: {$driverDoc}";
+if (!empty($driverPhone)) $customerDetails[] = "Tel: {$driverPhone}";
+
+if (!empty($customerDetails)) {
+    $custStr = implode(' | ', $customerDetails);
+    $notes = !empty($notes) ? "{$custStr} | Obs: {$notes}" : $custStr;
+}
 
 if (empty($plate) || strlen($plate) < 3) {
     sendError("Ingrese una placa válida antes de continuar");
@@ -161,6 +174,10 @@ try {
         'cellId' => $cellId,
         'plate' => $plate,
         'category' => $category,
+        'driverName' => $driverName,
+        'driverDoc' => $driverDoc,
+        'driverPhone' => $driverPhone,
+        'notes' => $notes,
         'entryTime' => $timeStr,
         'entryTimestamp' => $entryTimestamp,
         'ratePerHour' => $ratePerHour,

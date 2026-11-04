@@ -20,6 +20,9 @@ export const RegistroEntrada: React.FC = () => {
 
   const [plate, setPlate] = useState('');
   const [category, setCategory] = useState<VehicleType>('Carro');
+  const [driverName, setDriverName] = useState('');
+  const [driverDoc, setDriverDoc] = useState('');
+  const [driverPhone, setDriverPhone] = useState('');
   const [slotMode, setSlotMode] = useState<'auto' | 'manual'>('auto');
   const [manualSlot, setManualSlot] = useState<string>('');
   const [notes, setNotes] = useState('');
@@ -83,7 +86,14 @@ export const RegistroEntrada: React.FC = () => {
       return;
     }
 
-    const res = registerEntry(plate, category, effectiveSlot, notes);
+    const fullNotes = [
+      `Cliente: ${driverName.trim() || 'Presencial'}`,
+      `Doc: ${driverDoc.trim() || 'N/A'}`,
+      `Tel: ${driverPhone.trim() || 'N/A'}`,
+      notes.trim() ? `Obs: ${notes.trim()}` : ''
+    ].filter(Boolean).join(' | ');
+
+    const res = registerEntry(plate, category, effectiveSlot, fullNotes);
     if (res.success) {
       playCyberFeedback('checkout', 0.35);
       setTicketNumber(res.ticketId || `#PF-2099-${Math.floor(10000 + Math.random() * 90000)}`);
@@ -104,6 +114,9 @@ export const RegistroEntrada: React.FC = () => {
 
   const handleReset = () => {
     setPlate('');
+    setDriverName('');
+    setDriverDoc('');
+    setDriverPhone('');
     setNotes('');
     setSlotMode('auto');
   };
@@ -198,6 +211,49 @@ export const RegistroEntrada: React.FC = () => {
         {/* LEFT COLUMN: Intake Form (7 cols) */}
         <div className="lg:col-span-7 flex flex-col gap-5">
           <div className="rounded-2xl p-6 flex flex-col gap-5 relative overflow-hidden" style={{ background: 'linear-gradient(160deg, rgba(4,10,28,0.95) 0%, rgba(2,5,16,0.98) 100%)', border: '1px solid rgba(0,240,255,0.22)', boxShadow: '0 0 30px rgba(0,240,255,0.06)' }}>
+            {/* Step 0: Customer Data (Cliente Presencial / Sin Registro Web) */}
+            <div className="p-4 rounded-xl bg-black/40 border border-cyan-500/25 flex flex-col gap-3">
+              <div className="flex items-center justify-between border-b border-white/10 pb-2">
+                <span className="font-hud text-xs uppercase tracking-wider text-cyan-300 flex items-center gap-2 font-bold">
+                  <span className="material-symbols-outlined text-[18px] text-cyan-400">person</span>
+                  <span>DATOS DEL CLIENTE / VISITANTE (RECEPCIÓN MANUAL)</span>
+                </span>
+                <span className="font-mono text-[10px] text-slate-400">Sin cuenta web previa</span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="font-mono text-[10px] text-slate-400 uppercase block mb-1">Nombre Completo</label>
+                  <input
+                    type="text"
+                    value={driverName}
+                    onChange={(e) => setDriverName(e.target.value)}
+                    placeholder="Ej: Juan Camilo Pérez"
+                    className="w-full bg-[#060a1a] text-slate-200 font-mono text-xs px-3 py-2 rounded-lg border border-cyan-500/30 focus:border-cyan-400 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="font-mono text-[10px] text-slate-400 uppercase block mb-1">Cédula / Documento</label>
+                  <input
+                    type="text"
+                    value={driverDoc}
+                    onChange={(e) => setDriverDoc(e.target.value)}
+                    placeholder="Ej: 1024567890"
+                    className="w-full bg-[#060a1a] text-slate-200 font-mono text-xs px-3 py-2 rounded-lg border border-cyan-500/30 focus:border-cyan-400 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="font-mono text-[10px] text-slate-400 uppercase block mb-1">Teléfono / WhatsApp</label>
+                  <input
+                    type="tel"
+                    value={driverPhone}
+                    onChange={(e) => setDriverPhone(e.target.value)}
+                    placeholder="Ej: 312 456 7890"
+                    className="w-full bg-[#060a1a] text-slate-200 font-mono text-xs px-3 py-2 rounded-lg border border-cyan-500/30 focus:border-cyan-400 outline-none"
+                  />
+                </div>
+              </div>
+            </div>
+
             {/* Step 1: Plate Input with Holographic Scanner */}
             <div className="flex flex-col gap-2.5">
               <div className="flex items-center justify-between">
@@ -502,6 +558,28 @@ export const RegistroEntrada: React.FC = () => {
                 <span className="text-slate-400">OPERADOR:</span>
                 <span className="text-cyan-400">T-01 (Admin)</span>
               </div>
+
+              {/* Customer Info in Ticket */}
+              {(driverName || driverDoc) && (
+                <div className="w-full flex flex-col gap-0.5 py-1.5 border-t border-b border-cyan-500/20 font-mono text-[10px] text-slate-300">
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Cliente:</span>
+                    <strong className="text-cyan-300 truncate max-w-[200px]">{driverName || 'Presencial'}</strong>
+                  </div>
+                  {driverDoc && (
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Documento:</span>
+                      <span className="text-white">{driverDoc}</span>
+                    </div>
+                  )}
+                  {driverPhone && (
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Contacto:</span>
+                      <span className="text-white">{driverPhone}</span>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Big Plate Display Box */}
               <div className="w-full my-3 p-4 bg-[#050814] rounded-xl text-center flex flex-col items-center justify-center border-2 border-cyan-400/50 shadow-[0_0_20px_rgba(0,240,255,0.2)]">
