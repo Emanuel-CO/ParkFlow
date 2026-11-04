@@ -667,14 +667,28 @@
         // Cross-tab and real-time storage listener
         const onStorage = (e) => {
           if (e.key === 'parkflow_cells' && e.newValue) {
-            try { setCells(JSON.parse(e.newValue)); } catch(err) {}
+            try {
+              const parsed = JSON.parse(e.newValue);
+              setCells(parsed);
+            } catch(err) {}
           }
           if (e.key === 'parkflow_last_event' && e.newValue) {
             try {
               const ev = JSON.parse(e.newValue);
               setLastLiveEvent(ev);
-              playCyberAudio('laser');
-              showToast(`📡 TELEMETRÍA EN VIVO: El cliente ${ev.driver} (${ev.plate}) ocupó la bahía ${ev.cellId}`, 'info');
+              if (ev.type === 'client_request') {
+                playCyberAudio('laser');
+                showToast(`🔔 SOLICITUD DE CLIENTE: ${ev.driver} (${ev.plate}) solicita ocupar bahía ${ev.cellId}. Requiere aprobación del operador.`, 'warning');
+              } else if (ev.type === 'client_approved') {
+                playCyberAudio('checkout');
+                showToast(`✅ INGRESO APROBADO: Vehículo ${ev.plate} autorizado en bahía ${ev.cellId}. Barrera abierta.`, 'success');
+              } else if (ev.type === 'client_rejected') {
+                playCyberAudio('laser');
+                showToast(`❌ SOLICITUD RECHAZADA: La solicitud para la bahía ${ev.cellId} fue rechazada por el operador.`, 'error');
+              } else {
+                playCyberAudio('laser');
+                showToast(`📡 TELEMETRÍA EN VIVO: El cliente ${ev.driver} (${ev.plate}) ocupó la bahía ${ev.cellId}`, 'info');
+              }
             } catch(err) {}
           }
         };
@@ -1029,7 +1043,7 @@
         setActiveView(v);
       };
 
-      // Client Occupy Action
+      // Client Occupy Request Action (En espera de aprobación del Operador)
       const handleClientOccupy = (e) => {
         e.preventDefault();
         const cleanPlate = clientPlate.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -1038,11 +1052,11 @@
           return;
         }
 
-        // Anti-Passback: Validar si la placa ya se encuentra dentro del parqueadero
-        const alreadyInside = cells.find(c => c.status === 'occupied' && c.plate && c.plate.trim().toUpperCase().replace(/[^A-Z0-9]/g, '') === cleanPlate);
+        // Anti-Passback: Validar si la placa ya se encuentra dentro del parqueadero o con solicitud pendiente
+        const alreadyInside = cells.find(c => (c.status === 'occupied' || c.status === 'reserved') && c.plate && c.plate.trim().toUpperCase().replace(/[^A-Z0-9]/g, '') === cleanPlate);
         if (alreadyInside) {
           playCyberAudio('laser');
-          showToast(`BLOQUEO ANTI-PASSBACK: El vehículo ${clientPlate.toUpperCase()} ya se encuentra registrado en el puesto ${alreadyInside.id}. No se permite doble registro.`, 'error');
+          showToast(`BLOQUEO ANTI-PASSBACK: El vehículo ${clientPlate.toUpperCase()} ya se encuentra registrado o con solicitud en el puesto ${alreadyInside.id}. No se permite doble registro.`, 'error');
           return;
         }
 
@@ -1050,7 +1064,15 @@
           showToast('Seleccione un puesto libre en el mapa', 'warning');
           return;
         }
-        playCyberAudio('checkout');
+
+        const targetCell = cells.find(c => c.id === clientSelectedSlot);
+        if (!targetCell || targetCell.status !== 'free') {
+          playCyberAudio('laser');
+          showToast(`El puesto ${clientSelectedSlot} ya no se encuentra libre. Por favor seleccione otro puesto.`, 'error');
+          return;
+        }
+
+        playCyberAudio('click');
         const rate = clientVehicleType === 'Moto' ? 2200 : clientVehicleType === 'Camioneta' ? 6000 : 4500;
         const driverName = currentUser?.name || clientRegName || 'Conductor Registrado';
         const driverDoc = currentUser?.id || currentUser?.identification || clientRegDoc || clientLoginDoc || '1020304050';
@@ -1059,44 +1081,46 @@
         const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
         const nowMs = Date.now();
 
-        const newTicket = {
-          ticketId: `#PK-CLI-${Math.floor(1000 + Math.random() * 9000)}`,
+        const pendingTicket = {
+          ticketId: `#PK-SOL-${Math.floor(1000 + Math.random() * 9000)}`,
           plate: cleanPlate,
           cellId: clientSelectedSlot,
           category: clientVehicleType,
-          entryTime: timeStr,
-          entryTimestamp: nowMs,
+          requestTime: timeStr,
+          requestTimestamp: nowMs,
           ratePerHour: rate,
           driverName: driverName,
           driverDoc: driverDoc,
           driverPhone: driverPhone,
+          status: 'pending_approval',
         };
 
         const updatedCells = cells.map(c => c.id === clientSelectedSlot ? {
           ...c,
-          status: 'occupied',
+          status: 'reserved',
           plate: cleanPlate,
-          entryTime: timeStr,
-          entryTimestamp: nowMs,
-          occupiedTimestamp: nowMs,
-          duration: '0h 00m 00s',
-          currentTotal: rate,
-          ratePerHour: rate,
+          category: clientVehicleType,
           driverName: driverName,
           driverDoc: driverDoc,
           driverPhone: driverPhone,
-          ticketId: newTicket.ticketId,
-          isClientAutoOccupied: true,
+          ratePerHour: rate,
+          ticketId: pendingTicket.ticketId,
+          requestTime: timeStr,
+          requestTimestamp: nowMs,
+          isPendingApproval: true,
+          isClientAutoOccupied: false,
         } : c);
 
         setCells(updatedCells);
         
         const evData = {
+          type: 'client_request',
           cellId: clientSelectedSlot,
           plate: cleanPlate,
           driver: driverName,
           driverDoc: driverDoc,
-          ticketId: newTicket.ticketId,
+          driverPhone: driverPhone,
+          ticketId: pendingTicket.ticketId,
           category: clientVehicleType,
           time: timeStr,
           timestamp: nowMs,
@@ -1108,8 +1132,135 @@
           localStorage.setItem('parkflow_last_event', JSON.stringify(evData));
         } catch(err) {}
 
-        setClientIssuedTicket(newTicket);
-        showToast(`¡Puesto ${clientSelectedSlot} asignado exitosamente! Ticket ${newTicket.ticketId} emitido. Permanencia activa.`, 'success');
+        setClientIssuedTicket(pendingTicket);
+        showToast(`⏳ Solicitud de Bahía ${clientSelectedSlot} enviada al Operador. En espera de aprobación para habilitar ingreso.`, 'warning');
+      };
+
+      // Aprobación de solicitud de cliente por parte del Operador
+      const handleApproveClientRequest = (cellId) => {
+        playCyberAudio('checkout');
+        const now = new Date();
+        const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        const nowMs = Date.now();
+
+        const updatedCells = cells.map(c => {
+          if (c.id === cellId) {
+            const rate = c.ratePerHour || (c.category === 'Moto' ? 2200 : 4500);
+            return {
+              ...c,
+              status: 'occupied',
+              isPendingApproval: false,
+              isClientAutoOccupied: true,
+              entryTime: timeStr,
+              entryTimestamp: nowMs,
+              occupiedTimestamp: nowMs,
+              duration: '0h 00m 00s',
+              currentTotal: rate,
+            };
+          }
+          return c;
+        });
+
+        setCells(updatedCells);
+
+        const targetCell = cells.find(c => c.id === cellId);
+        const evData = {
+          type: 'client_approved',
+          cellId: cellId,
+          plate: targetCell?.plate,
+          driver: targetCell?.driverName,
+          ticketId: targetCell?.ticketId,
+          time: timeStr,
+          timestamp: nowMs,
+        };
+        setLastLiveEvent(evData);
+
+        try {
+          localStorage.setItem('parkflow_cells', JSON.stringify(updatedCells));
+          localStorage.setItem('parkflow_last_event', JSON.stringify(evData));
+        } catch (e) {}
+
+        if (clientIssuedTicket && clientIssuedTicket.cellId === cellId) {
+          setClientIssuedTicket(prev => ({
+            ...prev,
+            status: 'approved',
+            entryTime: timeStr,
+            entryTimestamp: nowMs,
+          }));
+        }
+
+        if (selectedCell && selectedCell.id === cellId) {
+          setSelectedCell(null);
+        }
+
+        showToast(`✅ ¡SOLICITUD APROBADA! Vehículo ${targetCell?.plate || ''} autorizado en Bahía ${cellId}. Conteo de permanencia activo y barrera abierta.`, 'success');
+      };
+
+      // Rechazo de solicitud de cliente por parte del Operador
+      const handleRejectClientRequest = (cellId) => {
+        playCyberAudio('laser');
+        const targetCell = cells.find(c => c.id === cellId);
+        const plate = targetCell?.plate;
+
+        const updatedCells = cells.map(c => {
+          if (c.id === cellId) {
+            return {
+              id: c.id,
+              zone: c.zone,
+              category: c.category,
+              status: 'free',
+              ratePerHour: c.ratePerHour || 4500,
+            };
+          }
+          return c;
+        });
+
+        setCells(updatedCells);
+
+        const evData = {
+          type: 'client_rejected',
+          cellId: cellId,
+          plate: plate,
+          timestamp: Date.now(),
+        };
+        setLastLiveEvent(evData);
+
+        try {
+          localStorage.setItem('parkflow_cells', JSON.stringify(updatedCells));
+          localStorage.setItem('parkflow_last_event', JSON.stringify(evData));
+        } catch (e) {}
+
+        if (clientIssuedTicket && clientIssuedTicket.cellId === cellId) {
+          setClientIssuedTicket(null);
+        }
+
+        if (selectedCell && selectedCell.id === cellId) {
+          setSelectedCell(null);
+        }
+
+        showToast(`❌ Solicitud para Bahía ${cellId} rechazada. El puesto ha sido liberado.`, 'warning');
+      };
+
+      // Cancelación voluntaria por parte del Cliente
+      const handleCancelClientRequest = (cellId) => {
+        playCyberAudio('click');
+        const updatedCells = cells.map(c => {
+          if (c.id === cellId && (c.status === 'reserved' || c.isPendingApproval)) {
+            return {
+              id: c.id,
+              zone: c.zone,
+              category: c.category,
+              status: 'free',
+              ratePerHour: c.ratePerHour || 4500,
+            };
+          }
+          return c;
+        });
+
+        setCells(updatedCells);
+        try { localStorage.setItem('parkflow_cells', JSON.stringify(updatedCells)); } catch (e) {}
+        setClientIssuedTicket(null);
+        showToast('Solicitud de bahía cancelada por el usuario.', 'info');
       };
 
       // Client Checkout Simulation
@@ -1405,6 +1556,7 @@
 
       // Filtered navigation based on Role
       const getNavItems = () => {
+        const pendingCount = cells.filter(c => c.status === 'reserved' || c.isPendingApproval).length;
         if (userRole === 'cliente') {
           return [
             { id: 'portal-cliente', label: 'Elegir Mi Puesto', sub: 'Mapa & Auto-Ticket', icon: 'local_parking' },
@@ -1414,16 +1566,16 @@
         }
         if (userRole === 'operador') {
           return [
-            { id: 'panel-operativo', label: 'Panel Operativo', sub: 'HUD Telemetría 3D', icon: 'grid_view' },
-            { id: 'registro-de-entrada', label: 'Registro Entrada', sub: 'Escáner Óptico LPR', icon: 'login' },
+            { id: 'panel-operativo', label: 'Panel Operativo', sub: pendingCount > 0 ? `🔔 ${pendingCount} Solicitudes` : 'HUD Telemetría 3D', icon: 'grid_view' },
+            { id: 'registro-de-entrada', label: 'Registro Entrada', sub: pendingCount > 0 ? `(${pendingCount} Pendientes)` : 'Escáner Óptico LPR', icon: 'login' },
             { id: 'salida-y-cobro', label: 'Salida y Cobro', sub: 'Liquidación Taquilla', icon: 'point_of_sale' },
           ];
         }
         // Administrador gets all!
         return [
-          { id: 'panel-operativo', label: 'Panel Operativo', sub: 'HUD Telemetría 3D', icon: 'grid_view' },
+          { id: 'panel-operativo', label: 'Panel Operativo', sub: pendingCount > 0 ? `🔔 ${pendingCount} Solicitudes` : 'HUD Telemetría 3D', icon: 'grid_view' },
           { id: 'portal-cliente', label: 'Portal Cliente', sub: 'Vista Conductor', icon: 'person' },
-          { id: 'registro-de-entrada', label: 'Registro Entrada', sub: 'Escáner Óptico LPR', icon: 'login' },
+          { id: 'registro-de-entrada', label: 'Registro Entrada', sub: pendingCount > 0 ? `(${pendingCount} Pendientes)` : 'Escáner Óptico LPR', icon: 'login' },
           { id: 'salida-y-cobro', label: 'Salida y Cobro', sub: 'Liquidación Quantum', icon: 'point_of_sale' },
           { id: 'tarifas-y-celdas', label: 'Tarifas y Celdas', sub: 'Matrices de Control', icon: 'tune' },
           { id: 'reportes-y-auditoria', label: 'Reportes', sub: 'Ledger Blockchain', icon: 'analytics' },
@@ -1676,6 +1828,7 @@
                   <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-10 gap-2.5 pt-1">
                     {cells.filter(c => clientBayFilter === 'all' ? true : c.zone === clientBayFilter).map(c => {
                       const isFree = c.status === 'free';
+                      const isPending = c.status === 'reserved' || c.isPendingApproval;
                       const isSelected = clientSelectedSlot === c.id;
                       return (
                         <button
@@ -1690,7 +1843,9 @@
                             }
                           }}
                           className={`p-2.5 rounded-xl border flex flex-col justify-between items-center text-center transition-all min-h-[96px] ${
-                            !isFree
+                            isPending
+                              ? 'bg-amber-950/40 border-amber-500/50 opacity-90 cursor-not-allowed shadow-[0_0_12px_rgba(245,158,11,0.25)]'
+                              : !isFree
                               ? 'bg-rose-950/30 border-rose-500/30 opacity-60 cursor-not-allowed'
                               : isSelected
                               ? 'bg-cyan-500/25 border-cyan-400 shadow-[0_0_20px_rgba(0,240,255,0.4)] scale-105 cursor-pointer ring-2 ring-cyan-400'
@@ -1703,14 +1858,16 @@
                           </div>
                           
                           <span className={`material-symbols-outlined text-[24px] my-0.5 ${
-                            isSelected ? 'text-cyan-300 animate-bounce' : isFree ? 'text-emerald-400' : 'text-rose-400'
+                            isSelected ? 'text-cyan-300 animate-bounce' : isPending ? 'text-amber-400 animate-pulse' : isFree ? 'text-emerald-400' : 'text-rose-400'
                           }`}>
-                            {isSelected ? 'task_alt' : isFree ? 'local_parking' : 'directions_car'}
+                            {isSelected ? 'task_alt' : isPending ? 'hourglass_top' : isFree ? 'local_parking' : 'directions_car'}
                           </span>
 
                           <div className="font-mono text-[9px] font-bold">
                             {isSelected ? (
                               <span className="text-cyan-300 glow-text-cyan font-black">ELEGIDO</span>
+                            ) : isPending ? (
+                              <span className="text-amber-300">SOLICITADO</span>
                             ) : isFree ? (
                               <span className="text-emerald-300">DISPONIBLE</span>
                             ) : (
@@ -1806,86 +1963,168 @@
                       type="submit"
                       disabled={(() => {
                         const clean = clientPlate.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
-                        return clean.length >= 3 && !!cells.find(c => c.status === 'occupied' && c.plate && c.plate.trim().toUpperCase().replace(/[^A-Z0-9]/g, '') === clean);
+                        return clean.length >= 3 && !!cells.find(c => (c.status === 'occupied' || c.status === 'reserved') && c.plate && c.plate.trim().toUpperCase().replace(/[^A-Z0-9]/g, '') === clean);
                       })()}
-                      className="mt-2 h-13 rounded-xl font-hud text-xs font-black tracking-wider cyber-btn-emerald cursor-pointer shadow-[0_0_20px_rgba(0,255,157,0.3)] disabled:opacity-40 disabled:cursor-not-allowed"
+                      className="mt-2 h-14 rounded-xl font-hud text-xs font-black tracking-wider cyber-btn-emerald cursor-pointer shadow-[0_0_20px_rgba(0,255,157,0.3)] disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                     >
-                      OCUPAR PUESTO {clientSelectedSlot} & GENERAR TICKET
+                      <span className="material-symbols-outlined text-[20px]">send_time_extension</span>
+                      SOLICITAR PUESTO {clientSelectedSlot} & ENVIAR A OPERADOR
                     </button>
                   </form>
 
                   {/* Right: Issued Digital Ticket Preview */}
                   <div className="lg:col-span-5 flex flex-col gap-4">
-                    {clientIssuedTicket ? (
-                      <div className="p-6 rounded-2xl border border-emerald-500/40 relative overflow-hidden flex flex-col gap-4" style={{
-                        background: 'linear-gradient(160deg, rgba(4,24,18,0.98) 0%, rgba(2,10,14,0.99) 100%)',
-                        boxShadow: '0 0 40px rgba(0,255,157,0.25)',
-                      }}>
-                        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-emerald-400 to-transparent" />
-                        
-                        <div className="flex items-center justify-between pb-3 border-b border-emerald-500/30">
-                          <div>
-                            <span className="font-mono text-[10px] text-emerald-400 block font-bold">TICKET DIGITAL ACTIVO</span>
-                            <span className="font-hud text-sm font-black text-white">{clientIssuedTicket.ticketId}</span>
-                          </div>
-                          <span className="material-symbols-outlined text-emerald-400 text-[28px] animate-pulse">qr_code_2</span>
-                        </div>
+                    {clientIssuedTicket ? (() => {
+                      const activeCell = cells.find(c => c.id === clientIssuedTicket.cellId);
+                      const isPending = activeCell ? (activeCell.status === 'reserved' || activeCell.isPendingApproval) : (clientIssuedTicket.status === 'pending_approval');
 
-                        <div className="plate-bezel px-4 py-2 rounded-xl text-center">
-                          <span className="font-mono text-3xl font-black text-yellow-300 tracking-widest">{clientIssuedTicket.plate}</span>
-                        </div>
+                      if (isPending) {
+                        return (
+                          <div className="p-6 rounded-2xl border-2 border-amber-500/50 relative overflow-hidden flex flex-col gap-4 animate-fadeIn" style={{
+                            background: 'linear-gradient(160deg, rgba(28,18,4,0.98) 0%, rgba(14,8,2,0.99) 100%)',
+                            boxShadow: '0 0 40px rgba(245,158,11,0.25)',
+                          }}>
+                            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-amber-400 to-transparent" />
+                            
+                            <div className="flex items-center justify-between pb-3 border-b border-amber-500/30">
+                              <div>
+                                <span className="font-mono text-[10px] text-amber-400 block font-bold flex items-center gap-1.5">
+                                  <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping"></span>
+                                  SOLICITUD EN PROCESO // GAFETE TEMPORAL
+                                </span>
+                                <span className="font-hud text-sm font-black text-white">{clientIssuedTicket.ticketId}</span>
+                              </div>
+                              <span className="material-symbols-outlined text-amber-400 text-[28px] animate-pulse">hourglass_top</span>
+                            </div>
 
-                        <div className="p-3.5 rounded-xl border border-emerald-500/25 bg-black/60 font-mono text-xs flex flex-col gap-2">
-                          <div className="flex justify-between">
-                            <span className="text-slate-400">Puesto Asignado:</span>
-                            <span className="font-bold text-cyan-300 font-hud text-sm">{clientIssuedTicket.cellId}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-slate-400">Hora de Ingreso:</span>
-                            <span className="font-bold text-white">{clientIssuedTicket.entryTime}</span>
-                          </div>
-                          <div className="flex justify-between items-center bg-cyan-950/40 p-2 rounded-lg border border-cyan-500/30">
-                            <span className="text-cyan-300 flex items-center gap-1 font-bold text-[11px]">
-                              <span className="material-symbols-outlined text-[15px] animate-spin">timer</span>
-                              Permanencia en Patio:
-                            </span>
-                            <span className="font-bold text-emerald-300 text-sm font-hud">
-                              {cells.find(c => c.id === clientIssuedTicket.cellId)?.duration || '0h 00m 00s'}
-                            </span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-slate-400">Tarifa por Hora:</span>
-                            <span className="font-bold text-emerald-300">${clientIssuedTicket.ratePerHour.toLocaleString('es-CO')} COP</span>
-                          </div>
-                          <div className="flex justify-between border-t border-white/10 pt-1.5 text-slate-300">
-                            <span>Estado de Barrera:</span>
-                            <span className="text-emerald-400 font-bold">HABILITADA (Ingresa)</span>
-                          </div>
-                        </div>
+                            <div className="plate-bezel px-4 py-2 rounded-xl text-center border-amber-500/40">
+                              <span className="font-mono text-3xl font-black text-yellow-300 tracking-widest">{clientIssuedTicket.plate}</span>
+                            </div>
 
-                        <div className="text-center font-mono text-[10px] text-slate-500">
-                          Conserva este ticket digital para consultar tu permanencia o liquidar tu salida.
-                        </div>
+                            <div className="p-3.5 rounded-xl border border-amber-500/30 bg-black/60 font-mono text-xs flex flex-col gap-2">
+                              <div className="flex justify-between items-center">
+                                <span className="text-slate-400">Bahía Solicitada:</span>
+                                <span className="font-bold text-amber-300 font-hud text-sm px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/30">
+                                  BAHÍA {clientIssuedTicket.cellId}
+                                </span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-slate-400">Hora de Solicitud:</span>
+                                <span className="font-bold text-white">{clientIssuedTicket.requestTime || clientIssuedTicket.entryTime}</span>
+                              </div>
+                              <div className="flex justify-between items-center bg-amber-950/40 p-2.5 rounded-lg border border-amber-500/30">
+                                <span className="text-amber-300 flex items-center gap-1 font-bold text-[11px]">
+                                  <span className="material-symbols-outlined text-[15px] animate-spin">sync</span>
+                                  Estado de la Solicitud:
+                                </span>
+                                <span className="font-bold text-amber-400 text-xs font-hud">
+                                  PENDIENTE DE APROBACIÓN
+                                </span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-slate-400">Tarifa a Aplicar:</span>
+                                <span className="font-bold text-white">${clientIssuedTicket.ratePerHour.toLocaleString('es-CO')} COP / h</span>
+                              </div>
+                              <div className="flex justify-between border-t border-white/10 pt-1.5 text-slate-300">
+                                <span>Estado de Barrera:</span>
+                                <span className="text-rose-400 font-bold flex items-center gap-1">
+                                  <span className="w-2 h-2 rounded-full bg-rose-500"></span>
+                                  CERRADA (Espera autorización)
+                                </span>
+                              </div>
+                            </div>
 
-                        <button
-                          type="button"
-                          onClick={() => {
-                            playCyberAudio('click');
-                            setClientConsultPlate(clientIssuedTicket.plate);
-                            setActiveView('consulta-pago');
-                          }}
-                          className="w-full py-2.5 rounded-xl font-hud text-xs font-black cyber-btn-cyan cursor-pointer flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(0,240,255,0.3)] mt-1"
-                        >
-                          <span className="material-symbols-outlined text-[16px]">timer</span>
-                          VER MI PERMANENCIA & PAGAR YA →
-                        </button>
-                      </div>
-                    ) : (
+                            <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-center font-mono text-[11px] text-amber-200">
+                              ⏳ <strong>Esperando al Operador:</strong> El operador en garita debe validar tus datos y presionar <em>Aceptar</em> para autorizar el ingreso a la bahía y abrir la barrera.
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => handleCancelClientRequest(clientIssuedTicket.cellId)}
+                              className="w-full py-2.5 rounded-xl font-hud text-xs font-bold bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 cursor-pointer flex items-center justify-center gap-2 transition-all mt-1"
+                            >
+                              <span className="material-symbols-outlined text-[16px]">cancel</span>
+                              CANCELAR SOLICITUD DE BAHÍA
+                            </button>
+                          </div>
+                        );
+                      }
+
+                      // CASO APROBADO: Ticket definitivo con contador activo
+                      return (
+                        <div className="p-6 rounded-2xl border border-emerald-500/40 relative overflow-hidden flex flex-col gap-4 animate-fadeIn" style={{
+                          background: 'linear-gradient(160deg, rgba(4,24,18,0.98) 0%, rgba(2,10,14,0.99) 100%)',
+                          boxShadow: '0 0 40px rgba(0,255,157,0.25)',
+                        }}>
+                          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-emerald-400 to-transparent" />
+                          
+                          <div className="flex items-center justify-between pb-3 border-b border-emerald-500/30">
+                            <div>
+                              <span className="font-mono text-[10px] text-emerald-400 block font-bold flex items-center gap-1.5">
+                                <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                                INGRESO APROBADO POR OPERADOR
+                              </span>
+                              <span className="font-hud text-sm font-black text-white">{clientIssuedTicket.ticketId}</span>
+                            </div>
+                            <span className="material-symbols-outlined text-emerald-400 text-[28px] animate-pulse">qr_code_2</span>
+                          </div>
+
+                          <div className="plate-bezel px-4 py-2 rounded-xl text-center">
+                            <span className="font-mono text-3xl font-black text-yellow-300 tracking-widest">{clientIssuedTicket.plate}</span>
+                          </div>
+
+                          <div className="p-3.5 rounded-xl border border-emerald-500/25 bg-black/60 font-mono text-xs flex flex-col gap-2">
+                            <div className="flex justify-between">
+                              <span className="text-slate-400">Puesto Asignado:</span>
+                              <span className="font-bold text-cyan-300 font-hud text-sm">BAHÍA {clientIssuedTicket.cellId}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-slate-400">Hora de Ingreso:</span>
+                              <span className="font-bold text-white">{activeCell?.entryTime || clientIssuedTicket.entryTime}</span>
+                            </div>
+                            <div className="flex justify-between items-center bg-cyan-950/40 p-2 rounded-lg border border-cyan-500/30">
+                              <span className="text-cyan-300 flex items-center gap-1 font-bold text-[11px]">
+                                <span className="material-symbols-outlined text-[15px] animate-spin">timer</span>
+                                Permanencia en Patio:
+                              </span>
+                              <span className="font-bold text-emerald-300 text-sm font-hud">
+                                {activeCell?.duration || '0h 00m 00s'}
+                              </span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-slate-400">Tarifa por Hora:</span>
+                              <span className="font-bold text-emerald-300">${clientIssuedTicket.ratePerHour.toLocaleString('es-CO')} COP</span>
+                            </div>
+                            <div className="flex justify-between border-t border-white/10 pt-1.5 text-slate-300">
+                              <span>Estado de Barrera:</span>
+                              <span className="text-emerald-400 font-bold">HABILITADA (Ingresa)</span>
+                            </div>
+                          </div>
+
+                          <div className="text-center font-mono text-[10px] text-slate-500">
+                            ¡Ingreso autorizado! Ya puedes parquear en la bahía designada.
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              playCyberAudio('click');
+                              setClientConsultPlate(clientIssuedTicket.plate);
+                              setActiveView('consulta-pago');
+                            }}
+                            className="w-full py-2.5 rounded-xl font-hud text-xs font-black cyber-btn-cyan cursor-pointer flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(0,240,255,0.3)] mt-1"
+                          >
+                            <span className="material-symbols-outlined text-[16px]">timer</span>
+                            VER MI PERMANENCIA & PAGAR YA →
+                          </button>
+                        </div>
+                      );
+                    })() : (
                       <div className="p-6 rounded-2xl border border-cyan-500/20 flex flex-col items-center justify-center text-center gap-3 min-h-[300px]" style={{ background: 'rgba(6,12,32,0.6)' }}>
                         <span className="material-symbols-outlined text-slate-600 text-[48px]">confirmation_number</span>
                         <span className="font-hud text-xs font-bold text-slate-400">AÚN NO HAS GENERADO TICKET</span>
                         <p className="font-mono text-[11px] text-slate-500 max-w-xs">
-                          Elige tu puesto en el mapa y presiona el botón verde para obtener tu ticket digital instantáneo.
+                          Elige tu puesto en el mapa y presiona el botón para solicitar tu ingreso al operador.
                         </p>
                       </div>
                     )}
@@ -2579,6 +2818,74 @@
                   <h1 className="font-hud text-2xl font-black text-white">PANEL OPERATIVO DE BAHÍAS & MAPA DIGITAL</h1>
                 </div>
 
+                {/* 🔔 BANNER DE SOLICITUDES DE INGRESO PENDIENTES DE CLIENTES */}
+                {(() => {
+                  const pendingRequests = cells.filter(c => c.status === 'reserved' || c.isPendingApproval);
+                  if (pendingRequests.length === 0) return null;
+                  return (
+                    <div className="p-5 rounded-2xl border-2 border-amber-500/70 bg-gradient-to-r from-amber-950/90 via-black/95 to-amber-950/90 shadow-[0_0_35px_rgba(245,158,11,0.35)] flex flex-col gap-3.5 animate-fadeIn">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-amber-500/30 pb-2.5">
+                        <div className="flex items-center gap-2.5">
+                          <span className="relative flex h-3.5 w-3.5 shrink-0">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-80"></span>
+                            <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-amber-400"></span>
+                          </span>
+                          <h2 className="font-hud text-sm font-black text-amber-300 tracking-wider flex items-center gap-2">
+                            <span>SOLICITUDES DE CLIENTES EN ESPERA DE AUTORIZACIÓN ({pendingRequests.length})</span>
+                            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/20 text-amber-200 border border-amber-500/40">GARITA DE CONTROL</span>
+                          </h2>
+                        </div>
+                        <span className="font-mono text-xs text-amber-200/90">
+                          El cliente solicitó bahía desde la web • Acepte para habilitar paso y abrir barrera
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {pendingRequests.map(req => (
+                          <div key={req.id} className="p-4 rounded-xl bg-black/70 border border-amber-500/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-lg">
+                            <div className="flex items-center gap-3">
+                              <div className="p-3 rounded-xl bg-amber-500/20 text-amber-300 font-hud text-xl font-black border border-amber-500/50 shrink-0 text-center min-w-[60px]">
+                                {req.id}
+                              </div>
+                              <div className="font-mono text-xs">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-yellow-300 font-bold font-hud text-base tracking-wider">{req.plate}</span>
+                                  <span className="px-2 py-0.5 rounded text-[10px] bg-white/10 text-slate-300">{req.category || 'Carro'}</span>
+                                </div>
+                                <div className="text-slate-200 text-xs mt-0.5">
+                                  Cliente: <strong className="text-white">{req.driverName || 'Particular'}</strong> {req.driverDoc ? `(CC: ${req.driverDoc})` : ''}
+                                </div>
+                                <div className="text-slate-400 text-[10px] mt-0.5">
+                                  Solicitado: {req.requestTime || req.entryTime || 'Reciente'} · Tarifa: ${req.ratePerHour?.toLocaleString('es-CO') || '4.500'}/h
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-2 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => handleApproveClientRequest(req.id)}
+                                className="px-4 py-2.5 rounded-xl font-hud text-xs font-black bg-emerald-500/25 hover:bg-emerald-500/40 text-emerald-300 border border-emerald-400/60 shadow-[0_0_15px_rgba(16,185,129,0.3)] cursor-pointer flex items-center gap-1.5 transition-all"
+                              >
+                                <span className="material-symbols-outlined text-[18px]">check_circle</span>
+                                ACEPTAR
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleRejectClientRequest(req.id)}
+                                className="px-3 py-2.5 rounded-xl font-hud text-xs font-bold bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 cursor-pointer flex items-center gap-1.5 transition-all"
+                              >
+                                <span className="material-symbols-outlined text-[18px]">cancel</span>
+                                RECHAZAR
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 {/* 📡 REAL-TIME LIVE OCCUPANCY BROADCAST BANNER */}
                 {lastLiveEvent && (
                   <div className="p-4 rounded-2xl border border-emerald-500/40 bg-gradient-to-r from-emerald-950/50 via-cyan-950/40 to-black/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-[0_0_30px_rgba(0,255,157,0.25)] animate-fadeIn">
@@ -2593,7 +2900,13 @@
                           <span className="px-2 py-0.5 rounded text-[9px] font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">EN VIVO</span>
                         </div>
                         <p className="font-mono text-xs text-slate-200 mt-0.5">
-                          El cliente <strong className="text-white">{lastLiveEvent.driver}</strong> ocupó la bahía <strong className="text-yellow-300 font-hud text-sm font-black">{lastLiveEvent.cellId}</strong> con vehículo <strong className="text-cyan-300 font-bold">{lastLiveEvent.plate}</strong> · Ticket <span className="text-emerald-400 font-bold">{lastLiveEvent.ticketId}</span> ({lastLiveEvent.time}).
+                          {lastLiveEvent.type === 'client_request' ? (
+                            <span>El cliente <strong className="text-white">{lastLiveEvent.driver}</strong> solicita ocupar bahía <strong className="text-yellow-300 font-hud text-sm font-black">{lastLiveEvent.cellId}</strong> ({lastLiveEvent.plate}) · <span className="text-amber-400 font-bold">En espera de aprobación</span> ({lastLiveEvent.time}).</span>
+                          ) : lastLiveEvent.type === 'client_approved' ? (
+                            <span>El operador aprobó el ingreso del cliente <strong className="text-white">{lastLiveEvent.driver}</strong> a bahía <strong className="text-emerald-400 font-hud text-sm font-black">{lastLiveEvent.cellId}</strong> ({lastLiveEvent.plate}) · <span className="text-emerald-300 font-bold">Barrera abierta</span> ({lastLiveEvent.time}).</span>
+                          ) : (
+                            <span>El cliente <strong className="text-white">{lastLiveEvent.driver}</strong> ocupó la bahía <strong className="text-yellow-300 font-hud text-sm font-black">{lastLiveEvent.cellId}</strong> con vehículo <strong className="text-cyan-300 font-bold">{lastLiveEvent.plate}</strong> · Ticket <span className="text-emerald-400 font-bold">{lastLiveEvent.ticketId}</span> ({lastLiveEvent.time}).</span>
+                          )}
                         </p>
                       </div>
                     </div>
@@ -2733,14 +3046,17 @@
                     const renderCell = (c) => {
                       const isOcc = c.status === 'occupied';
                       const isBlk = c.status === 'blocked';
-                      const isNewLive = c.id === lastLiveEvent?.cellId && isOcc;
+                      const isPending = c.status === 'reserved' || c.isPendingApproval;
+                      const isNewLive = c.id === lastLiveEvent?.cellId && (isOcc || isPending);
                       const isMoto = c.zone === 'Zona B' || c.category === 'Moto';
                       return (
                         <button
                           key={c.id}
                           onClick={() => { playCyberAudio('click'); setSelectedCell(c); }}
                           className={`p-2.5 rounded-xl border flex flex-col justify-between items-center min-h-[96px] transition-all cursor-pointer relative overflow-hidden text-center group ${
-                            isNewLive
+                            isPending
+                              ? 'bg-amber-950/60 border-amber-400 text-amber-300 ring-2 ring-amber-400/80 shadow-[0_0_20px_rgba(245,158,11,0.5)] animate-pulse'
+                              : isNewLive
                               ? 'bg-rose-950/60 border-emerald-400 ring-2 ring-emerald-400/80 shadow-[0_0_20px_rgba(0,255,157,0.5)] scale-102'
                               : isOcc
                               ? 'bg-rose-950/40 border-rose-500/50 shadow-[0_0_12px_rgba(255,42,109,0.2)] hover:border-rose-400'
@@ -2749,27 +3065,35 @@
                               : 'bg-emerald-950/25 border-emerald-500/30 hover:border-cyan-400 hover:bg-cyan-950/20 hover:scale-102'
                           }`}
                         >
-                          {isNewLive && (
+                          {isPending ? (
+                            <span className="absolute top-1 right-1 px-1 py-0.2 rounded text-[7px] font-mono font-bold bg-amber-400 text-black animate-pulse">
+                              SOLICITUD
+                            </span>
+                          ) : isNewLive ? (
                             <span className="absolute top-1 right-1 px-1 py-0.2 rounded text-[7px] font-mono font-bold bg-emerald-500 text-black animate-pulse">
                               NUEVO
                             </span>
-                          )}
+                          ) : null}
                           <div className="w-full flex justify-between items-center text-[11px] font-mono">
                             <span className="font-hud font-bold text-white tracking-wider">{c.id}</span>
                             <span className="text-[9px] text-slate-400">{isMoto ? '🏍️' : '🚗'}</span>
                           </div>
                           <span className={`material-symbols-outlined text-[22px] my-0.5 ${
-                            isOcc ? 'text-rose-400' : isBlk ? 'text-amber-400' : 'text-emerald-400'
+                            isPending ? 'text-amber-300 animate-bounce' : isOcc ? 'text-rose-400' : isBlk ? 'text-amber-400' : 'text-emerald-400'
                           }`}>
-                            {isOcc ? (isMoto ? 'two_wheeler' : 'directions_car') : isBlk ? 'construction' : 'local_parking'}
+                            {isPending ? 'hourglass_top' : isOcc ? (isMoto ? 'two_wheeler' : 'directions_car') : isBlk ? 'construction' : 'local_parking'}
                           </span>
                           <div className="flex flex-col items-center leading-tight w-full">
                             <span className={`font-mono text-[10px] font-bold truncate max-w-full ${
-                              isOcc ? 'text-yellow-300' : isBlk ? 'text-amber-400' : 'text-emerald-300'
+                              isPending ? 'text-amber-300' : isOcc ? 'text-yellow-300' : isBlk ? 'text-amber-400' : 'text-emerald-300'
                             }`}>
-                              {isOcc ? c.plate : isBlk ? 'MANT.' : 'LIBRE'}
+                              {isPending ? c.plate : isOcc ? c.plate : isBlk ? 'MANT.' : 'LIBRE'}
                             </span>
-                            {isOcc ? (
+                            {isPending ? (
+                              <span className="text-[8px] font-mono text-amber-400 font-black mt-0.5 animate-pulse">
+                                POR ACEPTAR
+                              </span>
+                            ) : isOcc ? (
                               <span className="text-[8px] font-mono text-cyan-300 font-bold mt-0.5 truncate max-w-full flex items-center justify-center gap-0.5">
                                 <span className="material-symbols-outlined text-[10px] text-cyan-400">timer</span>
                                 {c.duration || '0h 00m 00s'}
@@ -3251,6 +3575,74 @@
                       </div>
                     </div>
                   </div>
+
+                  {/* 🔔 SOLICITUDES DE CLIENTES WEB EN ESPERA DE APROBACIÓN */}
+                  {(() => {
+                    const pendingRequests = cells.filter(c => c.status === 'reserved' || c.isPendingApproval);
+                    if (pendingRequests.length === 0) return null;
+                    return (
+                      <div className="p-5 rounded-2xl border-2 border-amber-500/70 bg-gradient-to-r from-amber-950/90 via-black/95 to-amber-950/90 shadow-[0_0_35px_rgba(245,158,11,0.35)] flex flex-col gap-3.5 animate-fadeIn">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-amber-500/30 pb-2.5">
+                          <div className="flex items-center gap-2.5">
+                            <span className="relative flex h-3.5 w-3.5 shrink-0">
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-80"></span>
+                              <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-amber-400"></span>
+                            </span>
+                            <h2 className="font-hud text-sm font-black text-amber-300 tracking-wider flex items-center gap-2">
+                              <span>SOLICITUDES DE CLIENTES WEB POR APROBAR ({pendingRequests.length})</span>
+                              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/20 text-amber-200 border border-amber-500/40">BARRERA DE ENTRADA</span>
+                            </h2>
+                          </div>
+                          <span className="font-mono text-xs text-amber-200/90">
+                            Acepte la solicitud para confirmar la bahía y levantar la barrera de ingreso
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          {pendingRequests.map(req => (
+                            <div key={req.id} className="p-4 rounded-xl bg-black/70 border border-amber-500/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-lg">
+                              <div className="flex items-center gap-3">
+                                <div className="p-3 rounded-xl bg-amber-500/20 text-amber-300 font-hud text-xl font-black border border-amber-500/50 shrink-0 text-center min-w-[60px]">
+                                  {req.id}
+                                </div>
+                                <div className="font-mono text-xs">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-yellow-300 font-bold font-hud text-base tracking-wider">{req.plate}</span>
+                                    <span className="px-2 py-0.5 rounded text-[10px] bg-white/10 text-slate-300">{req.category || 'Carro'}</span>
+                                  </div>
+                                  <div className="text-slate-200 text-xs mt-0.5">
+                                    Cliente: <strong className="text-white">{req.driverName || 'Particular'}</strong> {req.driverDoc ? `(CC: ${req.driverDoc})` : ''}
+                                  </div>
+                                  <div className="text-slate-400 text-[10px] mt-0.5">
+                                    Hora: {req.requestTime || req.entryTime || 'Reciente'} · Tarifa: ${req.ratePerHour?.toLocaleString('es-CO') || '4.500'}/h
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-2 shrink-0">
+                                <button
+                                  type="button"
+                                  onClick={() => handleApproveClientRequest(req.id)}
+                                  className="px-4 py-2.5 rounded-xl font-hud text-xs font-black bg-emerald-500/25 hover:bg-emerald-500/40 text-emerald-300 border border-emerald-400/60 shadow-[0_0_15px_rgba(16,185,129,0.3)] cursor-pointer flex items-center gap-1.5 transition-all"
+                                >
+                                  <span className="material-symbols-outlined text-[18px]">check_circle</span>
+                                  ACEPTAR
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRejectClientRequest(req.id)}
+                                  className="px-3 py-2.5 rounded-xl font-hud text-xs font-bold bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 cursor-pointer flex items-center gap-1.5 transition-all"
+                                >
+                                  <span className="material-symbols-outlined text-[18px]">cancel</span>
+                                  RECHAZAR
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
 
                   {/* CASO 1: TICKET EXPEDIDO (RESULTADO) */}
                   {regIssuedTicket ? (
@@ -4975,10 +5367,54 @@
                 <div className="flex flex-col gap-3 py-4 font-mono text-xs">
                   <div className="flex justify-between p-2.5 rounded-lg bg-black/50 border border-white/10">
                     <span className="text-slate-400">Estado de Bahía:</span>
-                    <strong className={selectedCell.status === 'occupied' ? 'text-rose-400 font-bold' : selectedCell.status === 'blocked' ? 'text-amber-400 font-bold' : 'text-emerald-400 font-bold'}>
-                      {selectedCell.status === 'occupied' ? 'OCUPADO' : selectedCell.status === 'blocked' ? 'EN MANTENIMIENTO' : 'DISPONIBLE'}
+                    <strong className={
+                      selectedCell.isPendingApproval || selectedCell.status === 'reserved'
+                        ? 'text-amber-400 font-bold animate-pulse'
+                        : selectedCell.status === 'occupied'
+                        ? 'text-rose-400 font-bold'
+                        : selectedCell.status === 'blocked'
+                        ? 'text-amber-400 font-bold'
+                        : 'text-emerald-400 font-bold'
+                    }>
+                      {selectedCell.isPendingApproval || selectedCell.status === 'reserved'
+                        ? 'SOLICITUD PENDIENTE DE APROBACIÓN'
+                        : selectedCell.status === 'occupied'
+                        ? 'OCUPADO'
+                        : selectedCell.status === 'blocked'
+                        ? 'EN MANTENIMIENTO'
+                        : 'DISPONIBLE'}
                     </strong>
                   </div>
+
+                  {(selectedCell.isPendingApproval || selectedCell.status === 'reserved') && (
+                    <div className="p-3.5 rounded-xl bg-amber-950/40 border border-amber-500/40 flex flex-col gap-2">
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Placa Solicitada:</span>
+                        <strong className="text-yellow-300 font-hud text-base tracking-widest">{selectedCell.plate}</strong>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Cliente Solicitante:</span>
+                        <strong className="text-white">{selectedCell.driverName || 'Cliente Web'} {selectedCell.driverDoc ? `(CC: ${selectedCell.driverDoc})` : ''}</strong>
+                      </div>
+                      {selectedCell.driverPhone && (
+                        <div className="flex justify-between">
+                          <span className="text-slate-400">Teléfono:</span>
+                          <strong className="text-cyan-300">{selectedCell.driverPhone}</strong>
+                        </div>
+                      )}
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Hora de Solicitud:</span>
+                        <span className="text-white">{selectedCell.requestTime || 'Reciente'}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Tarifa a Aplicar:</span>
+                        <strong className="text-emerald-400">${selectedCell.ratePerHour?.toLocaleString('es-CO') || '4.500'} COP / h</strong>
+                      </div>
+                      <div className="p-2 rounded bg-amber-500/10 border border-amber-500/30 text-[11px] text-amber-200 mt-1">
+                        El cliente no ocupará la bahía hasta que el operador presione <strong>Aceptar</strong>. Al aceptar, iniciará el conteo de permanencia y se habilitará el paso.
+                      </div>
+                    </div>
+                  )}
 
                   {selectedCell.status === 'occupied' && (
                     <>
@@ -5019,7 +5455,27 @@
                   )}
                 </div>
 
-                <div className="flex items-center justify-end gap-2 pt-3 border-t border-cyan-500/20">
+                <div className="flex flex-wrap items-center justify-end gap-2 pt-3 border-t border-cyan-500/20">
+                  {(selectedCell.isPendingApproval || selectedCell.status === 'reserved') && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => handleApproveClientRequest(selectedCell.id)}
+                        className="px-4 py-2 rounded-xl font-hud text-xs font-black bg-emerald-500/25 hover:bg-emerald-500/40 text-emerald-300 border border-emerald-400/60 shadow-[0_0_15px_rgba(16,185,129,0.3)] cursor-pointer flex items-center gap-1.5"
+                      >
+                        <span className="material-symbols-outlined text-[16px]">check_circle</span>
+                        ACEPTAR Y ASIGNAR BAHÍA
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleRejectClientRequest(selectedCell.id)}
+                        className="px-4 py-2 rounded-xl font-hud text-xs font-bold bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 cursor-pointer flex items-center gap-1.5"
+                      >
+                        <span className="material-symbols-outlined text-[16px]">cancel</span>
+                        RECHAZAR SOLICITUD
+                      </button>
+                    </>
+                  )}
                   {selectedCell.status === 'occupied' && (
                     <button
                       type="button"
