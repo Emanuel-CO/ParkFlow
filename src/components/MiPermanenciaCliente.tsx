@@ -522,3 +522,4 @@ export const MiPermanenciaCliente: React.FC = () => {
     </div>
   );
 };
+

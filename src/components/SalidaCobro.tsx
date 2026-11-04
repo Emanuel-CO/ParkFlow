@@ -24,11 +24,17 @@ export const SalidaCobro: React.FC = () => {
   const [secondsTicking, setSecondsTicking] = useState(24);
   const [isScanningLpr, setIsScanningLpr] = useState(false);
 
-  // Default target cell fallback
-  const defaultTargetCell: ParkingCell = cells.find(
-    (c) => c.status === 'occupied' && (c.plate === searchQuery || c.id === searchQuery)
-  ) || cells.find((c) => c.status === 'occupied') || {
-    id: 'A-04',
+  // Dynamic lookup by plate or cell ID
+  const cleanSearch = searchQuery.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const foundCell = cells.find(
+    (c) => c.status === 'occupied' && (
+      (c.plate && c.plate.trim().toUpperCase().replace(/[^A-Z0-9]/g, '') === cleanSearch) ||
+      c.id.toUpperCase() === cleanSearch
+    )
+  );
+
+  const defaultTargetCell: ParkingCell = foundCell || cells.find((c) => c.status === 'occupied') || {
+    id: 'A-01',
     zone: 'Zona A',
     category: 'Carro',
     status: 'occupied',
@@ -42,11 +48,31 @@ export const SalidaCobro: React.FC = () => {
 
   const activeCell = selectedVehicleForCheckout?.cell || defaultTargetCell;
 
-  // Billing calculation
-  const hourlyRate = activeCell.ratePerHour || 4500;
-  const hoursComplete = 3;
-  const fractionQuarterFee = Math.round(hourlyRate / 4); // 1.125
-  const totalDue = hoursComplete * hourlyRate + fractionQuarterFee; // 14.625
+  // Real duration calculation from original ticket
+  const nowTs = Date.now();
+  const entryTs = activeCell.entryTimestamp || activeCell.occupiedTimestamp || (activeCell.elapsedSec ? nowTs - activeCell.elapsedSec * 1000 : nowTs - (3 * 3600 * 1000 + 15 * 60 * 1000));
+  const diffSec = Math.max(0, Math.floor((nowTs - entryTs) / 1000));
+  const hoursComplete = Math.floor(diffSec / 3600);
+  const minutesPart = Math.floor((diffSec % 3600) / 60);
+  const secondsPart = diffSec % 60;
+  const liveDurationStr = `${hoursComplete}h ${String(minutesPart).padStart(2, '0')}m ${String(secondsPart).padStart(2, '0')}s`;
+
+  // Billing calculation concordando con el ticket original
+  const hourlyRate = activeCell.ratePerHour || (activeCell.category === 'Moto' ? 2500 : activeCell.category === 'Pesado' ? 9000 : 4500);
+  const hoursFee = hoursComplete * hourlyRate;
+  let fractionQuarterFee = 0;
+  if (minutesPart > 0) {
+    if (minutesPart <= 15) fractionQuarterFee = Math.round(hourlyRate * 0.25);
+    else if (minutesPart <= 30) fractionQuarterFee = Math.round(hourlyRate * 0.5);
+    else if (minutesPart <= 45) fractionQuarterFee = Math.round(hourlyRate * 0.75);
+    else fractionQuarterFee = hourlyRate;
+  }
+  let totalDue = hoursFee + fractionQuarterFee;
+  if (hoursComplete === 0 && minutesPart <= 15 && diffSec < 900) {
+    fractionQuarterFee = Math.round(hourlyRate * 0.25);
+    totalDue = fractionQuarterFee;
+  }
+  if (totalDue === 0) totalDue = hourlyRate;
   const changeAmount = receivedAmount - totalDue;
 
   // Ticking duration
@@ -60,19 +86,23 @@ export const SalidaCobro: React.FC = () => {
   const handleSearch = (plate: string) => {
     playCyberFeedback('click', 0.2);
     setSearchQuery(plate);
+    const clean = plate.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
     const found = cells.find(
-      (c) => c.status === 'occupied' && (c.plate?.toUpperCase() === plate.toUpperCase() || c.id.toUpperCase() === plate.toUpperCase())
+      (c) => c.status === 'occupied' && (
+        (c.plate && c.plate.trim().toUpperCase().replace(/[^A-Z0-9]/g, '') === clean) ||
+        c.id.toUpperCase() === clean
+      )
     );
     if (found) {
       setSelectedVehicleForCheckout({
         cell: found,
         calculatedTotal: totalDue,
-        hours: 3,
-        fractionMinutes: 15,
+        hours: hoursComplete,
+        fractionMinutes: minutesPart,
       });
-      showToast(`Vehículo localizado en telemetría: ${found.plate || found.id}`, 'success');
+      showToast(`Vehículo localizado en telemetría: ${found.plate || found.id} (Bahía ${found.id})`, 'success');
     } else {
-      showToast(`Placa o celda "${plate}" cargada en despacho de liquidación`, 'info');
+      showToast(`No se encontró vehículo ocupado con placa o celda "${plate}"`, 'warning');
     }
   };
 
@@ -81,10 +111,16 @@ export const SalidaCobro: React.FC = () => {
     playCyberFeedback('laser', 0.35);
     setTimeout(() => {
       setIsScanningLpr(false);
-      showToast('Cámara LPR óptica: Placa KLO-892 identificada (Confianza: 99.4%)', 'success');
-      setSearchQuery('KLO-892');
+      const occupied = cells.filter(c => c.status === 'occupied' && c.plate);
+      const target = occupied.length > 0 ? occupied[0] : null;
+      if (target) {
+        showToast(`Cámara LPR óptica: Placa ${target.plate} identificada en celda ${target.id}`, 'success');
+        handleSearch(target.plate);
+      } else {
+        showToast('Cámara LPR óptica: No se detectan vehículos en barrera de salida', 'info');
+      }
       playCyberFeedback('success', 0.25);
-    }, 900);
+    }, 800);
   };
 
   const handleSelectPaymentMethod = (method: 'cash' | 'card' | 'qr') => {
@@ -230,18 +266,22 @@ export const SalidaCobro: React.FC = () => {
         {/* Quick Recent Search Chips */}
         <div className="relative z-10 flex items-center gap-2 mt-3.5 overflow-x-auto pt-1">
           <span className="text-[11px] font-mono text-slate-500 whitespace-nowrap uppercase tracking-wider">
-            En cola reciente:
+            Vehículos en patio ({cells.filter(c => c.status === 'occupied').length}):
           </span>
-          {['KLO-892 (A-04)', 'MTR-411 (B-12)', 'XYZ-908 (M-02)', 'NVY-402 (A-03)'].map((item) => {
-            const plateKey = item.split(' ')[0];
+          {cells.filter(c => c.status === 'occupied').map((c) => {
+            const isSelected = activeCell.id === c.id;
             return (
               <button
-                key={item}
+                key={c.id}
                 type="button"
-                onClick={() => handleSearch(plateKey)}
-                className="px-3 py-1 rounded-lg font-mono text-xs font-bold text-cyan-400 bg-cyan-500/10 hover:bg-cyan-500/25 border border-cyan-500/30 transition-all cursor-pointer whitespace-nowrap hover:shadow-[0_0_12px_rgba(0,240,255,0.3)]"
+                onClick={() => handleSearch(c.plate || c.id)}
+                className={`px-3 py-1 rounded-lg font-mono text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                  isSelected
+                    ? 'text-cyan-200 bg-cyan-500/30 border border-cyan-400 shadow-[0_0_12px_rgba(0,240,255,0.4)]'
+                    : 'text-cyan-400 bg-cyan-500/10 hover:bg-cyan-500/25 border border-cyan-500/30'
+                }`}
               >
-                {item}
+                {c.id} · {c.plate || 'OCUP'} ({c.category || 'Carro'})
               </button>
             );
           })}
@@ -324,10 +364,10 @@ export const SalidaCobro: React.FC = () => {
                 <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider">Permanencia Total</span>
                 <div className="flex items-center gap-1.5 text-cyan-300 text-[20px] md:text-[22px] font-mono font-black glow-text-cyan">
                   <span className="material-symbols-outlined text-[20px] text-cyan-400">timer</span>
-                  <span>3h 15m {String(secondsTicking).padStart(2, '0')}s</span>
+                  <span>{liveDurationStr}</span>
                 </div>
                 <span className="text-[10px] font-mono text-emerald-400 font-semibold mt-0.5">
-                  3 horas + 15 min fracción aplicada
+                  {hoursComplete} horas + {minutesPart} min fracción aplicada
                 </span>
               </div>
             </div>
@@ -458,15 +498,15 @@ export const SalidaCobro: React.FC = () => {
               <div className="flex items-center justify-between py-1.5 font-mono text-[12px] text-slate-300 border-b border-white/5">
                 <div className="flex items-center gap-2">
                   <span className="material-symbols-outlined text-[16px] text-cyan-400">schedule</span>
-                  <span>Cobro por 3 horas completas (3 x ${hourlyRate.toLocaleString('es-CO')})</span>
+                  <span>Cobro por {hoursComplete} hora(s) completa(s) ({hoursComplete} x ${hourlyRate.toLocaleString('es-CO')})</span>
                 </div>
-                <span className="text-cyan-200 font-bold">${(3 * hourlyRate).toLocaleString('es-CO')} COP</span>
+                <span className="text-cyan-200 font-bold">${hoursFee.toLocaleString('es-CO')} COP</span>
               </div>
 
               <div className="flex items-center justify-between py-1.5 font-mono text-[12px] text-slate-300 border-b border-white/5">
                 <div className="flex items-center gap-2">
                   <span className="material-symbols-outlined text-[16px] text-cyan-400">more_time</span>
-                  <span>Fracción adicional aplicada (15 min = 1/4 hora)</span>
+                  <span>Fracción adicional aplicada ({minutesPart} min)</span>
                 </div>
                 <span className="text-cyan-200 font-bold">${fractionQuarterFee.toLocaleString('es-CO')} COP</span>
               </div>

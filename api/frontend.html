@@ -522,6 +522,8 @@
       const [paymentMethod, setPaymentMethod] = useState('cash');
       const [receivedAmount, setReceivedAmount] = useState(20000);
       const [checkoutSuccess, setCheckoutSuccess] = useState(false);
+      const [checkoutReceipt, setCheckoutReceipt] = useState(null);
+      const [isScanningLpr, setIsScanningLpr] = useState(false);
       const [secondsTicking, setSecondsTicking] = useState(25);
 
       // Tarifas states
@@ -556,6 +558,74 @@
         const diffHours = Math.max(0.01, (Date.now() - ts) / (1000 * 3600));
         const billedHours = Math.max(1, Math.ceil(diffHours));
         return billedHours * rate;
+      };
+
+      // Helper para liquidación detallada con concordancia de ticket original
+      const calculateDetailedBilling = (cell) => {
+        if (!cell || cell.status !== 'occupied') {
+          return {
+            hours: 0,
+            minutes: 0,
+            seconds: 0,
+            durationStr: '--',
+            ratePerHour: 5000,
+            hoursFee: 0,
+            fractionMinutes: 0,
+            fractionFee: 0,
+            totalDue: 0,
+          };
+        }
+
+        const nowTs = Date.now();
+        let entryTs = cell.entryTimestamp || cell.occupiedTimestamp;
+        if (!entryTs) {
+          if (cell.elapsedSec) {
+            entryTs = nowTs - (cell.elapsedSec * 1000);
+          } else {
+            entryTs = nowTs - (3 * 3600 * 1000 + 15 * 60 * 1000);
+          }
+        }
+
+        const diffSec = Math.max(0, Math.floor((nowTs - entryTs) / 1000));
+        const hours = Math.floor(diffSec / 3600);
+        const minutes = Math.floor((diffSec % 3600) / 60);
+        const seconds = diffSec % 60;
+        const durationStr = `${hours}h ${String(minutes).padStart(2, '0')}m ${String(seconds).padStart(2, '0')}s`;
+
+        const ratePerHour = cell.ratePerHour || (cell.type === 'Moto' || cell.category === 'Moto' ? 2500 : cell.type === 'Pesado' || cell.category === 'Pesado' ? 9000 : 4500);
+        const hoursFee = hours * ratePerHour;
+        
+        let fractionFee = 0;
+        if (minutes > 0) {
+          if (minutes <= 15) {
+            fractionFee = Math.round(ratePerHour * 0.25);
+          } else if (minutes <= 30) {
+            fractionFee = Math.round(ratePerHour * 0.5);
+          } else if (minutes <= 45) {
+            fractionFee = Math.round(ratePerHour * 0.75);
+          } else {
+            fractionFee = ratePerHour;
+          }
+        }
+
+        let totalDue = hoursFee + fractionFee;
+        if (hours === 0 && minutes <= 15 && diffSec < 900) {
+          fractionFee = Math.round(ratePerHour * 0.25);
+          totalDue = fractionFee;
+        }
+        if (totalDue === 0) totalDue = ratePerHour;
+
+        return {
+          hours,
+          minutes,
+          seconds,
+          durationStr,
+          ratePerHour,
+          hoursFee,
+          fractionMinutes: minutes,
+          fractionFee,
+          totalDue,
+        };
       };
 
       useEffect(() => {
@@ -1112,10 +1182,50 @@
         );
       };
 
-      const handleConfirmPayment = () => {
+      const handleConfirmPayment = (targetCell, totalDue, method, received) => {
+        if (!targetCell) {
+          playCyberAudio('laser');
+          showToast('Seleccione o digite la placa de un vehículo estacionado para liquidar', 'warning');
+          return;
+        }
+
+        if (method === 'cash' && received < totalDue) {
+          playCyberAudio('laser');
+          showToast(`El monto en efectivo recibido es insuficiente. Faltan $${(totalDue - received).toLocaleString('es-CO')} COP`, 'error');
+          return;
+        }
+
         playCyberAudio('checkout');
+        const now = new Date();
+        const liveDur = getLiveDuration(targetCell);
+        const change = method === 'cash' ? Math.max(0, received - totalDue) : 0;
+        const methodStr = method === 'cash' ? 'Efectivo en Caja' : method === 'card' ? 'Tarjeta Débito / Crédito NFC' : 'QR Digital (Nequi / Bancolombia)';
+
+        const receipt = {
+          receiptId: `REC-${Date.now().toString().slice(-6)}`,
+          ticketId: targetCell.ticketId || `#TK-2099-${targetCell.id.replace('-', '')}`,
+          plate: targetCell.plate,
+          cellId: targetCell.id,
+          category: targetCell.category || targetCell.type || 'Carro',
+          driverName: targetCell.driverName || 'Conductor General',
+          entryTime: targetCell.entryTime || '08:30 AM',
+          exitTime: now.toLocaleTimeString(),
+          duration: liveDur,
+          ratePerHour: targetCell.ratePerHour || (targetCell.type === 'Moto' ? 2500 : targetCell.type === 'Pesado' ? 9000 : 4500),
+          totalDue: totalDue,
+          amountReceived: method === 'cash' ? received : totalDue,
+          change: change,
+          paymentMethod: methodStr,
+          operatorName: currentUser?.name || 'Operador de Turno',
+          operatorBadge: currentUser?.badge || 'OP-418',
+          timestamp: now.toLocaleString('es-CO'),
+        };
+
+        setCheckoutReceipt(receipt);
         setCheckoutSuccess(true);
-        const updated = cells.map(c => c.id === 'A-01' ? {
+
+        // Liberar la celda seleccionada en tiempo real
+        const updated = cells.map(c => c.id === targetCell.id ? {
           ...c,
           status: 'free',
           plate: undefined,
@@ -1124,11 +1234,44 @@
           isClientAutoOccupied: undefined,
           entryTimestamp: undefined,
           occupiedTimestamp: undefined,
-          currentTotal: undefined
+          currentTotal: undefined,
+          ticketId: undefined
         } : c);
         setCells(updated);
         try { localStorage.setItem('parkflow_cells', JSON.stringify(updated)); } catch(e) {}
-        showToast('¡Pago liquidado! Celda A-01 liberada y barrera abierta.', 'success');
+
+        // Enviar telemetría de salida
+        const evData = {
+          id: Date.now(),
+          type: 'exit',
+          cellId: targetCell.id,
+          plate: targetCell.plate,
+          category: targetCell.category || targetCell.type || 'Carro',
+          time: now.toLocaleTimeString(),
+          message: `Salida de taquilla: ${targetCell.plate} liberó bahía ${targetCell.id}. Liquidado $${totalDue.toLocaleString('es-CO')} COP.`
+        };
+        setLastLiveEvent(evData);
+        try { localStorage.setItem('parkflow_last_event', JSON.stringify(evData)); } catch(e) {}
+
+        showToast(`¡Liquidación exitosa! Vehículo ${targetCell.plate} retirado de celda ${targetCell.id}. Barrera de salida abierta.`, 'success');
+      };
+
+      const handleTriggerLpr = () => {
+        setIsScanningLpr(true);
+        playCyberAudio('laser');
+        setTimeout(() => {
+          setIsScanningLpr(false);
+          const occupied = cells.filter(c => c.status === 'occupied' && c.plate);
+          const target = occupied.length > 0 ? occupied[0] : null;
+          if (target) {
+            setSearchQuery(target.plate);
+            setReceivedAmount(calculateDetailedBilling(target).totalDue);
+            showToast(`Cámara LPR salida: Placa ${target.plate} leída en barrera (Confianza: 99.4%)`, 'success');
+          } else {
+            showToast('Cámara LPR activa: No se detectan vehículos en barrera de salida', 'info');
+          }
+          playCyberAudio('checkout');
+        }, 800);
       };
 
       const handleRegisterEntry = (e) => {
@@ -3062,104 +3205,434 @@
             )}
 
             {/* VIEW: SALIDA Y COBRO (OPERADOR / ADMIN) */}
-            {activeView === 'salida-y-cobro' && userRole !== 'cliente' && (
-              <div className="flex flex-col gap-6 animate-fadeIn">
-                <div className="p-5 rounded-2xl border border-cyan-500/25" style={{ background: 'linear-gradient(135deg, rgba(8,16,42,0.92) 0%, rgba(4,8,24,0.96) 100%)' }}>
-                  <div className="font-mono text-xs text-violet-400 uppercase tracking-widest mb-1">// DESPACHO Y CAJA // LIQUIDACIÓN QUANTUM</div>
-                  <h1 className="font-hud text-2xl font-black text-white">SALIDA Y LIQUIDACIÓN AUTOMATIZADA</h1>
-                </div>
+            {activeView === 'salida-y-cobro' && userRole !== 'cliente' && (() => {
+              const cleanSearch = (searchQuery || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+              const occupiedCells = cells.filter(c => c.status === 'occupied');
+              
+              // Buscar celda que coincida con la placa digitada o el ID de celda
+              const matchedCell = cleanSearch
+                ? cells.find(c => c.status === 'occupied' && (
+                    (c.plate && c.plate.trim().toUpperCase().replace(/[^A-Z0-9]/g, '') === cleanSearch) ||
+                    (c.id && c.id.trim().toUpperCase() === cleanSearch)
+                  ))
+                : (occupiedCells[0] || null);
 
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-                  {/* Left Column: Vehicle & Camera */}
-                  <div className="lg:col-span-7 flex flex-col gap-5 p-5 rounded-2xl border border-cyan-500/25" style={{ background: 'rgba(6,12,32,0.85)' }}>
-                    <div className="flex items-center justify-between pb-3 border-b border-cyan-500/20">
-                      <span className="font-mono text-xs text-slate-400">VEHÍCULO LOCALIZADO EN TERMINAL</span>
-                      <span className="px-2.5 py-0.5 rounded bg-rose-500/20 text-rose-300 font-mono text-[10px] font-bold border border-rose-500/40">CELDA A-01</span>
+              const billing = matchedCell ? calculateDetailedBilling(matchedCell) : null;
+              const totalDue = billing ? billing.totalDue : 0;
+              const changeDue = receivedAmount - totalDue;
+
+              return (
+                <div className="flex flex-col gap-6 animate-fadeIn">
+                  {/* Header Banner */}
+                  <div className="p-5 rounded-2xl border border-cyan-500/25 flex flex-col sm:flex-row sm:items-center justify-between gap-4" style={{ background: 'linear-gradient(135deg, rgba(8,16,42,0.92) 0%, rgba(4,8,24,0.96) 100%)' }}>
+                    <div>
+                      <div className="font-mono text-xs text-violet-400 uppercase tracking-widest mb-1">// DESPACHO Y CAJA // LIQUIDACIÓN QUANTUM</div>
+                      <h1 className="font-hud text-2xl font-black text-white">SALIDA Y LIQUIDACIÓN AUTOMATIZADA</h1>
                     </div>
+                    <div className="flex items-center gap-2 font-mono text-xs">
+                      <span className="px-3 py-1.5 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-300">
+                        {occupiedCells.length} vehículos en patio
+                      </span>
+                    </div>
+                  </div>
 
-                    <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 rounded-xl border border-cyan-500/20 bg-black/60">
-                      <div>
-                        <span className="font-mono text-[10px] text-slate-500 uppercase block mb-1">Placa Reconocida</span>
-                        <div className="plate-bezel px-4 py-1 rounded-lg">
-                          <span className="font-mono text-2xl font-black text-yellow-300 tracking-widest block">KLO-892</span>
+                  {/* Operator Plate Digitizer & Search Console */}
+                  <div className="p-5 rounded-2xl border border-cyan-500/30 bg-black/70 flex flex-col gap-4 shadow-[0_0_30px_rgba(0,240,255,0.15)]">
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                      <div className="flex items-center gap-2 flex-1">
+                        <span className="material-symbols-outlined text-cyan-400 text-[24px]">pin</span>
+                        <div className="flex-1">
+                          <label className="font-mono text-[10px] text-slate-400 uppercase block font-bold">
+                            DIGITAR PLACA O BAHÍA DEL VEHÍCULO A LIQUIDAR:
+                          </label>
+                          <input
+                            type="text"
+                            value={searchQuery}
+                            placeholder="EJ: KLO-892 o A-01"
+                            onChange={e => {
+                              const val = e.target.value.toUpperCase();
+                              setSearchQuery(val);
+                              setCheckoutReceipt(null);
+                              const cl = val.trim().replace(/[^A-Z0-9]/g, '');
+                              const found = cells.find(c => c.status === 'occupied' && ((c.plate && c.plate.trim().toUpperCase().replace(/[^A-Z0-9]/g, '') === cl) || (c.id && c.id.trim().toUpperCase() === cl)));
+                              if (found) {
+                                const b = calculateDetailedBilling(found);
+                                setReceivedAmount(b.totalDue);
+                              }
+                            }}
+                            className="w-full h-12 px-4 rounded-xl font-mono text-xl font-black text-yellow-300 bg-black/80 border border-cyan-500/40 focus:outline-none focus:border-cyan-400 tracking-wider mt-1"
+                          />
                         </div>
                       </div>
-                      <div className="text-right">
-                        <span className="font-mono text-[10px] text-slate-500 uppercase block mb-1">Permanencia</span>
-                        <div className="font-mono text-xl font-black text-cyan-300">3h 15m {secondsTicking}s</div>
-                      </div>
-                    </div>
 
-                    {/* Camera View */}
-                    <div className="h-44 rounded-xl overflow-hidden relative border border-emerald-500/40 group">
-                      <img src="https://lh3.googleusercontent.com/aida-public/AB6AXuDX824AoEaYC9qCqNMPBVrlOA-t-AMBD-afvstjk8RYYEwC3cBMkM5AVhnCxmfl4ci9W1-Z6KlN7WbhSHdcn7Y-LBuPjXDNrMWUTXNCwuwOpHkJ4THl3qi1OLOEjJhsPizEGLut46kp6z01m_18Ab7w6XGYHdj237bQdKLcEgp66W0bXq9OKzNaL5PQl8iEBuUcJt7z-sy8-IE_Trwjs5-WbgeecDVagp3wA82y6AjLAEhRzhCzODEL" className="w-full h-full object-cover" alt="Camera feed" />
-                      <div className="camera-reticle" />
-                      <div className="absolute top-1/3 left-1/4 right-1/4 h-10 border-2 border-cyan-400 rounded bg-cyan-500/20 flex items-center justify-center font-mono text-[11px] text-yellow-300 font-bold shadow-[0_0_15px_rgba(0,240,255,0.6)]">
-                        OCR LPR: KLO-892 [99.4%]
-                      </div>
-                    </div>
-
-                    {/* Breakdown */}
-                    <div className="p-4 rounded-xl border border-cyan-500/20 font-mono text-xs flex flex-col gap-2 bg-black/40">
-                      <div className="flex justify-between text-slate-400">
-                        <span>3 horas completas (3 x $4.500):</span>
-                        <span className="text-white font-bold">$13.500 COP</span>
-                      </div>
-                      <div className="flex justify-between text-slate-400">
-                        <span>Fracción 15 min (1/4 hora):</span>
-                        <span className="text-white font-bold">$1.125 COP</span>
-                      </div>
-                      <div className="flex justify-between pt-2 border-t border-cyan-500/20 font-hud text-sm">
-                        <span className="text-cyan-400 font-bold">TOTAL LIQUIDADO:</span>
-                        <span className="text-cyan-300 font-black glow-text-cyan text-lg">$14.625 COP</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Right Column: Payment Desk */}
-                  <div className="lg:col-span-5 flex flex-col gap-5 p-5 rounded-2xl border border-cyan-500/35" style={{ background: 'rgba(6,12,32,0.92)' }}>
-                    <div className="font-hud text-sm font-bold text-white pb-3 border-b border-cyan-500/20">RECEPCIÓN DE PAGO EN TAQUILLA</div>
-                    
-                    <div className="grid grid-cols-3 gap-2">
-                      {['cash', 'card', 'qr'].map(m => (
+                      <div className="flex items-end gap-2 pt-1 sm:pt-0">
                         <button
-                          key={m}
-                          onClick={() => { playCyberAudio('click'); setPaymentMethod(m); }}
-                          className={`p-3 rounded-xl border font-hud text-[10px] font-bold uppercase transition-all ${
-                            paymentMethod === m ? 'bg-cyan-500/25 border-cyan-400 text-cyan-300 shadow-[0_0_12px_rgba(0,240,255,0.3)]' : 'bg-black/50 border-white/10 text-slate-400'
-                          }`}
+                          type="button"
+                          onClick={() => {
+                            playCyberAudio('click');
+                            setCheckoutReceipt(null);
+                            if (matchedCell) {
+                              showToast(`Ticket original cargado para ${matchedCell.plate} en Bahía ${matchedCell.id}`, 'success');
+                            } else {
+                              showToast(`No se encontró vehículo con placa "${searchQuery}"`, 'warning');
+                            }
+                          }}
+                          className="h-12 px-5 rounded-xl font-hud text-xs font-bold cyber-btn-cyan cursor-pointer whitespace-nowrap flex items-center gap-1.5"
                         >
-                          {m === 'cash' ? 'Efectivo' : m === 'card' ? 'Tarjeta NFC' : 'QR Nequi'}
+                          <span className="material-symbols-outlined text-[18px]">search</span>
+                          <span>CONSULTAR</span>
                         </button>
-                      ))}
-                    </div>
-
-                    <div className="p-4 rounded-xl border border-cyan-500/20 flex flex-col gap-3 bg-black/50">
-                      <div className="font-mono text-xs text-slate-400">Monto Recibido en Caja:</div>
-                      <input
-                        type="number"
-                        value={receivedAmount}
-                        onChange={e => setReceivedAmount(Number(e.target.value))}
-                        className="w-full h-11 px-3 rounded-lg font-mono text-xl font-black text-cyan-300 bg-black/80 border border-cyan-500/30 focus:outline-none"
-                      />
-                      <div className="flex justify-between items-center pt-2 border-t border-white/10">
-                        <span className="font-mono text-xs text-slate-400">Cambio / Vueltos:</span>
-                        <span className="font-mono text-xl font-black text-emerald-300 glow-text-emerald">
-                          ${(receivedAmount - 14625).toLocaleString('es-CO')} COP
-                        </span>
+                        <button
+                          type="button"
+                          onClick={handleTriggerLpr}
+                          className="h-12 px-4 rounded-xl font-hud text-xs font-bold cyber-btn-violet cursor-pointer whitespace-nowrap flex items-center gap-1.5"
+                          title="Escanear placa por cámara óptica LPR en barrera"
+                        >
+                          <span className={`material-symbols-outlined text-[18px] ${isScanningLpr ? 'animate-spin' : ''}`}>
+                            videocam
+                          </span>
+                          <span className="hidden md:inline">LPR SALIDA</span>
+                        </button>
                       </div>
                     </div>
 
-                    <button
-                      onClick={handleConfirmPayment}
-                      className="w-full py-4 rounded-xl font-hud text-xs font-black tracking-wider cyber-btn-emerald cursor-pointer"
-                    >
-                      CONFIRMAR PAGO Y LIBERAR CELDA A-01
-                    </button>
+                    {/* Quick selection pills of all currently occupied vehicles */}
+                    {occupiedCells.length > 0 && (
+                      <div className="pt-2 border-t border-white/5 flex flex-wrap items-center gap-2">
+                        <span className="font-mono text-[10px] text-slate-400 uppercase font-bold mr-1">
+                          VEHÍCULOS EN PATIO ({occupiedCells.length}):
+                        </span>
+                        {occupiedCells.map(c => {
+                          const isSelected = matchedCell && matchedCell.id === c.id;
+                          return (
+                            <button
+                              key={c.id}
+                              type="button"
+                              onClick={() => {
+                                playCyberAudio('click');
+                                setSearchQuery(c.plate || c.id);
+                                setCheckoutReceipt(null);
+                                const b = calculateDetailedBilling(c);
+                                setReceivedAmount(b.totalDue);
+                              }}
+                              className={`px-3 py-1 rounded-lg font-mono text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                                isSelected
+                                  ? 'bg-cyan-500/30 border border-cyan-400 text-cyan-200 shadow-[0_0_12px_rgba(0,240,255,0.4)]'
+                                  : 'bg-black/50 border border-white/10 text-slate-400 hover:text-white hover:border-cyan-500/40'
+                              }`}
+                            >
+                              <span className="text-cyan-400 font-hud text-[10px]">{c.id}</span>
+                              <span className="text-yellow-300 font-black">{c.plate || 'OCUPADA'}</span>
+                              <span className="text-[10px] text-slate-400">({c.type || c.category || 'Carro'})</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
+
+                  {/* Checkout Receipt Modal / View if Finished */}
+                  {checkoutReceipt ? (
+                    <div className="p-8 rounded-3xl border border-emerald-500/50 bg-gradient-to-b from-emerald-950/40 via-black/80 to-black/90 shadow-[0_0_50px_rgba(0,255,157,0.25)] flex flex-col gap-6 animate-fadeIn">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-emerald-500/30 gap-3">
+                        <div className="flex items-center gap-3">
+                          <div className="w-12 h-12 rounded-xl bg-emerald-500/20 border border-emerald-400 flex items-center justify-center text-emerald-400 text-2xl">
+                            <span className="material-symbols-outlined text-[28px]">receipt_long</span>
+                          </div>
+                          <div>
+                            <span className="font-mono text-[10px] text-emerald-400 font-bold block">// COMPROBANTE FISCAL DE LIQUIDACIÓN</span>
+                            <h2 className="font-hud text-xl font-black text-white">SALIDA EXITOSA // BARRERA ELEVADA</h2>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 font-mono text-xs">
+                          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                          <span>BAHÍA {checkoutReceipt.cellId} LIBERADA</span>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                        <div className="p-4 rounded-2xl bg-black/70 border border-emerald-500/30 flex flex-col items-center justify-center text-center gap-2 font-mono">
+                          <span className="material-symbols-outlined text-emerald-400 text-[48px]">check_circle</span>
+                          <span className="text-xs text-white font-black">{checkoutReceipt.ticketId}</span>
+                          <span className="text-[10px] text-slate-400">Placa: <strong className="text-yellow-300">{checkoutReceipt.plate}</strong></span>
+                          <span className="text-[10px] text-slate-400">Operador: {checkoutReceipt.operatorName} [{checkoutReceipt.operatorBadge}]</span>
+                        </div>
+
+                        <div className="p-4 rounded-2xl bg-black/70 border border-emerald-500/30 font-mono text-xs flex flex-col justify-between gap-2.5">
+                          <div className="flex justify-between">
+                            <span className="text-slate-400">Hora de Entrada:</span>
+                            <span className="text-white font-bold">{checkoutReceipt.entryTime}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-slate-400">Hora de Salida:</span>
+                            <span className="text-white font-bold">{checkoutReceipt.exitTime}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-slate-400">Permanencia Total:</span>
+                            <span className="text-emerald-400 font-bold">{checkoutReceipt.duration}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-slate-400">Tarifa Aplicada:</span>
+                            <span className="text-white">${checkoutReceipt.ratePerHour.toLocaleString('es-CO')}/h</span>
+                          </div>
+                          <div className="flex justify-between border-t border-white/10 pt-1.5">
+                            <span className="text-slate-400">Método de Pago:</span>
+                            <span className="text-cyan-300 font-bold">{checkoutReceipt.paymentMethod}</span>
+                          </div>
+                        </div>
+
+                        <div className="p-5 rounded-2xl bg-gradient-to-br from-emerald-950/60 to-black/80 border border-emerald-500/40 flex flex-col justify-between text-center gap-3">
+                          <div>
+                            <span className="font-mono text-[10px] text-slate-400 uppercase tracking-widest block">TOTAL COBRADO</span>
+                            <div className="font-hud text-3xl font-black text-emerald-300 glow-text-emerald mt-1">
+                              ${checkoutReceipt.totalDue.toLocaleString('es-CO')} COP
+                            </div>
+                          </div>
+
+                          {checkoutReceipt.paymentMethod.includes('Efectivo') && (
+                            <div className="p-2 rounded-xl bg-black/60 border border-emerald-500/25 font-mono text-xs text-slate-300 flex justify-between">
+                              <span>Recibido: ${checkoutReceipt.amountReceived.toLocaleString('es-CO')}</span>
+                              <span className="text-emerald-400 font-bold">Cambio: ${checkoutReceipt.change.toLocaleString('es-CO')}</span>
+                            </div>
+                          )}
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              playCyberAudio('click');
+                              showToast('Imprimiendo comprobante fiscal en impresora térmica...', 'info');
+                            }}
+                            className="w-full py-2.5 rounded-xl font-hud text-xs font-bold cyber-btn-emerald cursor-pointer"
+                          >
+                            🖨️ IMPRIMIR RECIBO FISCAL
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="flex justify-end gap-3 pt-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            playCyberAudio('click');
+                            setCheckoutReceipt(null);
+                            setSearchQuery('');
+                          }}
+                          className="px-6 py-2.5 rounded-xl font-hud text-xs font-black cyber-btn-cyan cursor-pointer"
+                        >
+                          🔄 LIQUIDAR SIGUIENTE VEHÍCULO
+                        </button>
+                      </div>
+                    </div>
+                  ) : matchedCell && billing ? (
+                    /* Main Liquidation Workspace */
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                      
+                      {/* Left Column: Vehicle & Camera & Original Ticket */}
+                      <div className="lg:col-span-7 flex flex-col gap-5 p-5 rounded-2xl border border-cyan-500/25" style={{ background: 'rgba(6,12,32,0.85)' }}>
+                        <div className="flex items-center justify-between pb-3 border-b border-cyan-500/20">
+                          <span className="font-mono text-xs text-slate-400">VEHÍCULO LOCALIZADO EN TERMINAL</span>
+                          <span className="px-2.5 py-0.5 rounded bg-rose-500/20 text-rose-300 font-mono text-[10px] font-bold border border-rose-500/40">
+                            CELDA {matchedCell.id}
+                          </span>
+                        </div>
+
+                        {/* Placa & Live Permanence HUD */}
+                        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 rounded-xl border border-cyan-500/20 bg-black/60">
+                          <div>
+                            <span className="font-mono text-[10px] text-slate-500 uppercase block mb-1">
+                              Placa Reconocida · Ticket #{matchedCell.ticketId || ('TK-' + matchedCell.id.replace('-', ''))}
+                            </span>
+                            <div className="plate-bezel px-4 py-1 rounded-lg">
+                              <span className="font-mono text-2xl font-black text-yellow-300 tracking-widest block">
+                                {matchedCell.plate}
+                              </span>
+                            </div>
+                            <span className="font-mono text-[10px] text-cyan-400 mt-1 block">
+                              Tipo: {matchedCell.type || matchedCell.category || 'Carro'} · Conductor: {matchedCell.driverName || 'Cliente General'}
+                            </span>
+                          </div>
+                          
+                          <div className="text-right">
+                            <span className="font-mono text-[10px] text-slate-500 uppercase block mb-1">
+                              Permanencia en Vivo (Patio)
+                            </span>
+                            <div className="font-mono text-xl sm:text-2xl font-black text-cyan-300 flex items-center justify-end gap-1.5">
+                              <span className="material-symbols-outlined text-[18px] animate-spin text-emerald-400">timer</span>
+                              <span>{billing.durationStr}</span>
+                            </div>
+                            <span className="font-mono text-[10px] text-slate-400 mt-0.5 block">
+                              Ingreso: {matchedCell.entryTime || '08:30 AM'}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Camera View */}
+                        <div className="h-44 rounded-xl overflow-hidden relative border border-emerald-500/40 group">
+                          <img src="https://lh3.googleusercontent.com/aida-public/AB6AXuDX824AoEaYC9qCqNMPBVrlOA-t-AMBD-afvstjk8RYYEwC3cBMkM5AVhnCxmfl4ci9W1-Z6KlN7WbhSHdcn7Y-LBuPjXDNrMWUTXNCwuwOpHkJ4THl3qi1OLOEjJhsPizEGLut46kp6z01m_18Ab7w6XGYHdj237bQdKLcEgp66W0bXq9OKzNaL5PQl8iEBuUcJt7z-sy8-IE_Trwjs5-WbgeecDVagp3wA82y6AjLAEhRzhCzODEL" className="w-full h-full object-cover" alt="Camera feed" />
+                          <div className="camera-reticle" />
+                          <div className="absolute top-1/3 left-1/4 right-1/4 h-10 border-2 border-cyan-400 rounded bg-cyan-500/20 flex items-center justify-center font-mono text-[11px] text-yellow-300 font-bold shadow-[0_0_15px_rgba(0,240,255,0.6)]">
+                            OCR LPR: {matchedCell.plate} [99.4%]
+                          </div>
+                        </div>
+
+                        {/* Breakdown Concordando con el Ticket Original */}
+                        <div className="p-4 rounded-xl border border-cyan-500/20 font-mono text-xs flex flex-col gap-2 bg-black/40">
+                          <div className="flex justify-between text-slate-400">
+                            <span>Tarifa por Hora (Ticket Original):</span>
+                            <span className="text-white font-bold">${billing.ratePerHour.toLocaleString('es-CO')} COP/h</span>
+                          </div>
+                          <div className="flex justify-between text-slate-400">
+                            <span>{billing.hours} hora(s) completa(s) ({billing.hours} × ${billing.ratePerHour.toLocaleString('es-CO')}):</span>
+                            <span className="text-white font-bold">${billing.hoursFee.toLocaleString('es-CO')} COP</span>
+                          </div>
+                          {billing.fractionMinutes > 0 && (
+                            <div className="flex justify-between text-slate-400">
+                              <span>Fracción {billing.fractionMinutes} min:</span>
+                              <span className="text-white font-bold">${billing.fractionFee.toLocaleString('es-CO')} COP</span>
+                            </div>
+                          )}
+                          <div className="flex justify-between pt-2 border-t border-cyan-500/20 font-hud text-sm">
+                            <span className="text-cyan-400 font-bold">TOTAL LIQUIDADO:</span>
+                            <span className="text-cyan-300 font-black glow-text-cyan text-xl">
+                              ${billing.totalDue.toLocaleString('es-CO')} COP
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Right Column: Payment Desk */}
+                      <div className="lg:col-span-5 flex flex-col gap-5 p-5 rounded-2xl border border-cyan-500/35" style={{ background: 'rgba(6,12,32,0.92)' }}>
+                        <div className="font-hud text-sm font-bold text-white pb-3 border-b border-cyan-500/20 flex items-center justify-between">
+                          <span>RECEPCIÓN DE PAGO EN TAQUILLA</span>
+                          <span className="font-mono text-xs text-emerald-400 font-bold">CAJA ABIERTA</span>
+                        </div>
+                        
+                        {/* Payment Method Selector */}
+                        <div className="grid grid-cols-3 gap-2">
+                          {[
+                            { id: 'cash', label: 'Efectivo', icon: 'payments' },
+                            { id: 'card', label: 'Tarjeta NFC', icon: 'credit_card' },
+                            { id: 'qr', label: 'QR Nequi', icon: 'qr_code_2' },
+                          ].map(m => (
+                            <button
+                              key={m.id}
+                              type="button"
+                              onClick={() => { playCyberAudio('click'); setPaymentMethod(m.id); }}
+                              className={`p-3 rounded-xl border font-hud text-[10px] font-bold uppercase transition-all cursor-pointer flex flex-col items-center gap-1 ${
+                                paymentMethod === m.id
+                                  ? 'bg-cyan-500/25 border-cyan-400 text-cyan-300 shadow-[0_0_12px_rgba(0,240,255,0.3)]'
+                                  : 'bg-black/50 border-white/10 text-slate-400 hover:text-white'
+                              }`}
+                            >
+                              <span className="material-symbols-outlined text-[18px]">{m.icon}</span>
+                              <span>{m.label}</span>
+                            </button>
+                          ))}
+                        </div>
+
+                        {/* Cash Drawer Inputs & Quick Buttons */}
+                        {paymentMethod === 'cash' ? (
+                          <div className="p-4 rounded-xl border border-cyan-500/20 flex flex-col gap-3 bg-black/50">
+                            <div className="flex items-center justify-between">
+                              <span className="font-mono text-xs text-slate-400">Monto Recibido en Caja:</span>
+                              <button
+                                type="button"
+                                onClick={() => { playCyberAudio('click'); setReceivedAmount(billing.totalDue); }}
+                                className="px-2 py-0.5 rounded bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 font-mono text-[10px] font-bold cursor-pointer"
+                              >
+                                EXACTO (${billing.totalDue.toLocaleString('es-CO')})
+                              </button>
+                            </div>
+
+                            <input
+                              type="number"
+                              value={receivedAmount}
+                              onChange={e => setReceivedAmount(Number(e.target.value))}
+                              className="w-full h-11 px-3 rounded-lg font-mono text-xl font-black text-cyan-300 bg-black/80 border border-cyan-500/30 focus:outline-none focus:border-cyan-400 text-right"
+                            />
+
+                            {/* Quick Presets */}
+                            <div className="flex gap-1.5 flex-wrap">
+                              {[10000, 20000, 50000, 100000]
+                                .filter(amt => amt >= billing.totalDue || amt === 10000)
+                                .map(amt => (
+                                  <button
+                                    key={amt}
+                                    type="button"
+                                    onClick={() => { playCyberAudio('click'); setReceivedAmount(amt); }}
+                                    className="px-2.5 py-1 rounded bg-white/5 hover:bg-cyan-500/20 border border-white/10 text-slate-300 hover:text-cyan-200 font-mono text-[11px] font-bold cursor-pointer transition-all"
+                                  >
+                                    ${amt.toLocaleString('es-CO')}
+                                  </button>
+                                ))}
+                            </div>
+
+                            <div className="flex justify-between items-center pt-2 border-t border-white/10 font-mono text-xs">
+                              <span className="text-slate-400">Cambio / Vueltos:</span>
+                              <span className={`text-xl font-black ${
+                                changeDue >= 0 ? 'text-emerald-300 glow-text-emerald' : 'text-rose-400 font-bold'
+                              }`}>
+                                {changeDue >= 0 
+                                  ? `$${changeDue.toLocaleString('es-CO')} COP` 
+                                  : `Faltan $${Math.abs(changeDue).toLocaleString('es-CO')} COP`}
+                              </span>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="p-4 rounded-xl border border-cyan-500/20 flex flex-col items-center justify-center text-center gap-2 bg-black/50 py-6">
+                            <span className="material-symbols-outlined text-[36px] text-cyan-400">
+                              {paymentMethod === 'card' ? 'contactless' : 'qr_code_scanner'}
+                            </span>
+                            <div className="font-hud text-xs font-bold text-white uppercase">
+                              {paymentMethod === 'card' ? 'DATÁFONO NFC LISTO' : 'CÓDIGO QR GENERADO'}
+                            </div>
+                            <p className="font-mono text-[10px] text-slate-400 max-w-xs">
+                              {paymentMethod === 'card' 
+                                ? 'Acerque la tarjeta o dispositivo del cliente a la terminal de contacto.' 
+                                : 'Pida al cliente escanear el QR desde Bancolombia, Nequi o Daviplata.'}
+                            </p>
+                            <div className="px-3 py-1 rounded bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 font-mono text-xs font-bold mt-1">
+                              AUTORIZACIÓN EN LÍNEA OK
+                            </div>
+                          </div>
+                        )}
+
+                        <button
+                          type="button"
+                          onClick={() => handleConfirmPayment(matchedCell, billing.totalDue, paymentMethod, receivedAmount)}
+                          disabled={paymentMethod === 'cash' && changeDue < 0}
+                          className="w-full py-4 rounded-xl font-hud text-xs font-black tracking-wider cyber-btn-emerald cursor-pointer shadow-[0_0_20px_rgba(0,255,157,0.3)] disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                        >
+                          <span className="material-symbols-outlined text-[18px]">lock_open</span>
+                          <span>
+                            CONFIRMAR PAGO DE ${billing.totalDue.toLocaleString('es-CO')} & LIBERAR CELDA {matchedCell.id}
+                          </span>
+                        </button>
+                      </div>
+
+                    </div>
+                  ) : (
+                    /* No Matching Vehicle Found */
+                    <div className="p-8 rounded-3xl border border-cyan-500/20 bg-black/60 flex flex-col items-center justify-center text-center gap-4 animate-fadeIn">
+                      <div className="w-16 h-16 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400">
+                        <span className="material-symbols-outlined text-[36px]">search_off</span>
+                      </div>
+                      <div>
+                        <div className="font-mono text-xs text-slate-400 uppercase tracking-widest">// SIN COINCIDENCIAS //</div>
+                        <h3 className="font-hud text-xl font-black text-white mt-1">
+                          NO SE ENCONTRÓ NINGÚN VEHÍCULO ACTIVO CON LA PLACA O CELDA "{searchQuery}"
+                        </h3>
+                        <p className="font-sans text-xs text-slate-400 max-w-md mt-2">
+                          Verifica si la placa está bien digitada, o haz clic en uno de los vehículos estacionados en patio listados arriba.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
                 </div>
-              </div>
-            )}
+              );
+            })()}
 
             {/* VIEW: TARIFAS Y UMBRALES (SOLO ADMIN) */}
             {activeView === 'tarifas-y-celdas' && userRole === 'administrador' && (
