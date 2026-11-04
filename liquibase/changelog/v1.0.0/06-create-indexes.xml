@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.20.xsd">
+
+    <changeSet id="v1.0.0-06-create-indexes" author="parkflow-dev">
+        <comment>Creación de índices para optimizar búsquedas por placa, estado y tickets</comment>
+        
+        <createIndex tableName="cells" indexName="idx_cells_plate">
+            <column name="plate"/>
+        </createIndex>
+
+        <createIndex tableName="cells" indexName="idx_cells_status">
+            <column name="status"/>
+        </createIndex>
+
+        <createIndex tableName="movements" indexName="idx_movements_plate">
+            <column name="plate"/>
+        </createIndex>
+
+        <createIndex tableName="movements" indexName="idx_movements_ticket">
+            <column name="ticket_id"/>
+        </createIndex>
+
+        <createIndex tableName="transactions" indexName="idx_transactions_plate">
+            <column name="plate"/>
+        </createIndex>
+
+        <createIndex tableName="users" indexName="idx_users_role">
+            <column name="role"/>
+        </createIndex>
+
+        <createIndex tableName="users" indexName="idx_users_badge">
+            <column name="badge"/>
+        </createIndex>
+
+        <rollback>
+            <dropIndex tableName="cells" indexName="idx_cells_plate"/>
+            <dropIndex tableName="cells" indexName="idx_cells_status"/>
+            <dropIndex tableName="movements" indexName="idx_movements_plate"/>
+            <dropIndex tableName="movements" indexName="idx_movements_ticket"/>
+            <dropIndex tableName="transactions" indexName="idx_transactions_plate"/>
+            <dropIndex tableName="users" indexName="idx_users_role"/>
+            <dropIndex tableName="users" indexName="idx_users_badge"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

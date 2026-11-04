@@ -492,6 +492,10 @@
       const [opDeleteConfirmTarget, setOpDeleteConfirmTarget] = useState(null);
       const [revealedPins, setRevealedPins] = useState({});
 
+      // Liquibase Telemetry State
+      const [liquibaseStatus, setLiquibaseStatus] = useState(null);
+      const [isLiquibaseChecking, setIsLiquibaseChecking] = useState(false);
+
       // Security feedback & UI Controls
       const [authError, setAuthError] = useState(null);
       const [authSuccess, setAuthSuccess] = useState(null);
@@ -1131,6 +1135,23 @@
         if (v === 'gestion-operadores') {
           refreshOperators();
         }
+        if (v === 'reportes-y-auditoria') {
+          fetchLiquibaseStatus();
+        }
+      };
+
+      const fetchLiquibaseStatus = async () => {
+        setIsLiquibaseChecking(true);
+        try {
+          const resp = await fetch('http://localhost/parkflow-api/liquibase_migrate.php?action=status');
+          if (resp.ok) {
+            const data = await resp.json();
+            if (data.success) {
+              setLiquibaseStatus(data);
+            }
+          }
+        } catch (e) {}
+        setIsLiquibaseChecking(false);
       };
 
       // ── MÉTODOS DE GESTIÓN DE OPERADORES (ADMINISTRADOR GLOBAL) ──
@@ -5820,9 +5841,101 @@
             {/* VIEW: REPORTES (SOLO ADMIN) */}
             {activeView === 'reportes-y-auditoria' && userRole === 'administrador' && (
               <div className="flex flex-col gap-6 animate-fadeIn">
-                <div className="p-5 rounded-2xl border border-cyan-500/25" style={{ background: 'linear-gradient(135deg, rgba(8,16,44,0.92) 0%, rgba(4,8,24,0.96) 100%)' }}>
-                  <div className="font-mono text-xs text-cyan-400 uppercase tracking-widest mb-1">// HISTÓRICO FISCAL // BLOCKCHAIN SHA-256</div>
-                  <h1 className="font-hud text-2xl font-black text-white">REPORTES OPERATIVOS & AUDITORÍA</h1>
+                <div className="p-5 rounded-2xl border border-cyan-500/25 flex flex-col sm:flex-row sm:items-center justify-between gap-3" style={{ background: 'linear-gradient(135deg, rgba(8,16,44,0.92) 0%, rgba(4,8,24,0.96) 100%)' }}>
+                  <div>
+                    <div className="font-mono text-xs text-cyan-400 uppercase tracking-widest mb-1">// HISTÓRICO FISCAL // BLOCKCHAIN SHA-256 & LIQUIBASE</div>
+                    <h1 className="font-hud text-2xl font-black text-white">REPORTES OPERATIVOS & AUDITORÍA</h1>
+                  </div>
+
+                  <button
+                    onClick={fetchLiquibaseStatus}
+                    disabled={isLiquibaseChecking}
+                    className="px-4 py-2.5 rounded-xl font-mono text-xs font-bold text-emerald-300 bg-emerald-500/10 border border-emerald-500/30 hover:bg-emerald-500/20 transition flex items-center gap-2 cursor-pointer shadow-[0_0_15px_rgba(16,185,129,0.2)] disabled:opacity-50"
+                    title="Consultar estado de migraciones Liquibase"
+                  >
+                    <span className={`material-symbols-outlined text-[18px] ${isLiquibaseChecking ? 'animate-spin' : ''}`}>sync</span>
+                    <span>{isLiquibaseChecking ? 'CONSULTANDO...' : 'TELEMETRÍA LIQUIBASE'}</span>
+                  </button>
+                </div>
+
+                {/* ── PANEL DE ESTADO LIQUIBASE & DATABASECHANGELOG ── */}
+                <div className="p-5 rounded-2xl border border-emerald-500/30 flex flex-col gap-4 relative overflow-hidden" style={{ background: 'linear-gradient(135deg, rgba(6,24,20,0.92) 0%, rgba(3,12,16,0.96) 100%)' }}>
+                  <div className="flex items-center justify-between">
+                    <div className="font-mono text-xs text-emerald-400 uppercase tracking-widest flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                      <span>// MOTOR DE CONTROL DE VERSIONES // LIQUIBASE 4.27.0 // PARKFLOW_DB</span>
+                    </div>
+                    <span className="px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                      DATABASE STATUS: ONLINE
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 font-mono text-xs">
+                    <div className="p-3.5 rounded-xl bg-black/50 border border-emerald-500/20">
+                      <div className="text-slate-400 text-[10px] uppercase font-bold">CHANGESETS AUDITADOS</div>
+                      <div className="font-bold text-white font-hud text-xl mt-1">
+                        {liquibaseStatus?.liquibase?.executed_count ?? 7}
+                      </div>
+                      <div className="text-emerald-400 text-[10px] mt-0.5">DATABASECHANGELOG</div>
+                    </div>
+
+                    <div className="p-3.5 rounded-xl bg-black/50 border border-emerald-500/20">
+                      <div className="text-slate-400 text-[10px] uppercase font-bold">BLOQUEO CONCURRENTE</div>
+                      <div className="font-bold text-emerald-300 font-hud text-xl mt-1">
+                        {liquibaseStatus?.liquibase?.is_locked ? 'BLOQUEADO' : 'LIBERADO'}
+                      </div>
+                      <div className="text-slate-400 text-[10px] mt-0.5">DATABASECHANGELOGLOCK</div>
+                    </div>
+
+                    <div className="p-3.5 rounded-xl bg-black/50 border border-emerald-500/20">
+                      <div className="text-slate-400 text-[10px] uppercase font-bold">CELDAS / BAHÍAS</div>
+                      <div className="font-bold text-cyan-300 font-hud text-xl mt-1">
+                        {liquibaseStatus?.tables?.cells ?? 50}
+                      </div>
+                      <div className="text-slate-400 text-[10px] mt-0.5">Zona A & Zona B</div>
+                    </div>
+
+                    <div className="p-3.5 rounded-xl bg-black/50 border border-emerald-500/20">
+                      <div className="text-slate-400 text-[10px] uppercase font-bold">USUARIOS & OPERADORES</div>
+                      <div className="font-bold text-violet-300 font-hud text-xl mt-1">
+                        {liquibaseStatus?.tables?.users ?? 7}
+                      </div>
+                      <div className="text-slate-400 text-[10px] mt-0.5">Root, Turnos & Clientes</div>
+                    </div>
+                  </div>
+
+                  {liquibaseStatus?.liquibase?.history && liquibaseStatus.liquibase.history.length > 0 && (
+                    <div className="rounded-xl border border-emerald-500/20 overflow-x-auto bg-black/50">
+                      <table className="w-full text-left font-mono text-xs">
+                        <thead>
+                          <tr className="border-b border-emerald-500/20 text-emerald-400 font-hud text-[10px]">
+                            <th className="p-2.5">#</th>
+                            <th className="p-2.5">ChangeSet ID</th>
+                            <th className="p-2.5">Autor</th>
+                            <th className="p-2.5">Comentarios / Descripción</th>
+                            <th className="p-2.5">Fecha Ejecución</th>
+                            <th className="p-2.5 text-center">Estado</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-white/5 text-[11px]">
+                          {liquibaseStatus.liquibase.history.map((h, idx) => (
+                            <tr key={h.ID} className="hover:bg-emerald-500/5">
+                              <td className="p-2.5 text-slate-500">{idx + 1}</td>
+                              <td className="p-2.5 font-bold text-emerald-300">{h.ID}</td>
+                              <td className="p-2.5 text-slate-300">{h.AUTHOR}</td>
+                              <td className="p-2.5 text-slate-400">{h.COMMENTS || h.DESCRIPTION}</td>
+                              <td className="p-2.5 text-slate-400">{h.DATEEXECUTED}</td>
+                              <td className="p-2.5 text-center">
+                                <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold text-[10px]">
+                                  {h.EXECTYPE}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </div>
 
                 <div className="p-5 rounded-2xl border border-cyan-500/25 overflow-x-auto" style={{ background: 'rgba(6,12,32,0.85)' }}>

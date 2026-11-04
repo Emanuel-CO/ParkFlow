@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.20.xsd">
+
+    <changeSet id="v1.0.0-05-seed-movements" author="parkflow-dev">
+        <comment>Inserción de bitácora de auditoría histórica de entradas y salidas</comment>
+        <sql>
+            INSERT INTO `movements` (`id`, `ticket_id`, `plate`, `vehicle_type`, `cell_id`, `type`, `time`, `timestamp`, `amount`) VALUES
+            ('mov-1', '#TK-89421', 'KLO-892', 'Carro', 'A-01', 'Entrada', '11:15 AM', 1700000000000, 0.00),
+            ('mov-2', '#TK-89415', 'PLZ-550', 'Carro', 'A-12', 'Salida', '11:42 AM', 1700000000000, 9000.00),
+            ('mov-3', '#TK-89420', 'WZF-12D', 'Moto', 'B-01', 'Entrada', '12:00 PM', 1700000000000, 0.00),
+            ('mov-4', '#TK-89422', 'NVY-402', 'Carro', 'A-03', 'Entrada', '12:40 PM', 1700000000000, 0.00),
+            ('mov-5', '#TK-89416', 'BKN-032', 'Moto', 'B-08', 'Salida', '13:00 PM', 1700000000000, 4400.00)
+            ON DUPLICATE KEY UPDATE `amount`=VALUES(`amount`);
+        </sql>
+        <rollback>
+            <delete tableName="movements">
+                <where>id IN ('mov-1', 'mov-2', 'mov-3', 'mov-4', 'mov-5')</where>
+            </delete>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="v1.0.0-05-seed-transactions" author="parkflow-dev">
+        <comment>Inserción de transacciones de facturación y tickets iniciales</comment>
+        <sql>
+            INSERT INTO `transactions` (`id`, `plate`, `vehicle_type`, `cell_id`, `entry_time`, `entry_timestamp`, `exit_time`, `exit_timestamp`, `duration`, `snapshot_rate`, `total_paid`, `payment_method`, `operator`, `status`, `notes`) VALUES
+            ('#TK-89421', 'ABC-123', 'Carro', 'A-14', 'Hoy 11:20 AM', 1700000000000, 'Hoy 14:05 PM', 1700000000000, '2h 45m', 4500.00, 13500.00, 'Efectivo', 'Diana Morales', 'Completado', NULL),
+            ('#TK-89420', 'MTO-89F', 'Moto', 'B-06', 'Hoy 12:45 PM', 1700000000000, 'Hoy 14:15 PM', 1700000000000, '1h 30m', 2200.00, 4400.00, 'Bancolombia', 'Carlos Rojas', 'Completado', NULL),
+            ('#TK-89419', 'KLP-552', 'Camioneta / SUV', 'A-02', 'Hoy 13:00 PM', 1700000000000, NULL, NULL, '1h 32m', 6000.00, 0.00, 'Pendiente', 'Carlos Rojas', 'En Curso', NULL),
+            ('#TK-89418', 'XTR-901', 'Carro', 'A-09', 'Hoy 10:15 AM', 1700000000000, 'Hoy 10:19 AM', 1700000000000, '4 min', 4500.00, 0.00, 'Exento / Gracia', 'Carlos Rojas', 'Anulado', 'Salida antes de gracia (15 min)'),
+            ('#TK-89417', 'URB-419', 'Carro', 'A-03', 'Hoy 09:00 AM', 1700000000000, 'Hoy 13:30 PM', 1700000000000, '4h 30m', 4500.00, 22500.00, 'Datáfono', 'Carlos Rojas', 'Completado', NULL)
+            ON DUPLICATE KEY UPDATE `total_paid`=VALUES(`total_paid`);
+        </sql>
+        <rollback>
+            <delete tableName="transactions">
+                <where>id IN ('#TK-89421', '#TK-89420', '#TK-89419', '#TK-89418', '#TK-89417')</where>
+            </delete>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

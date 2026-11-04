@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.20.xsd">
+
+    <changeSet id="v1.0.0-02-seed-tariffs" author="parkflow-dev">
+        <comment>Inserción de tarifas iniciales para Carros, Motos, Camionetas y Bicicletas</comment>
+        <insert tableName="tariffs">
+            <column name="category" value="Carro"/>
+            <column name="rate_per_hour" valueNumeric="4500.00"/>
+            <column name="min_fraction" valueNumeric="2500.00"/>
+            <column name="capacity" valueNumeric="30"/>
+            <column name="snapshot_version" value="v3.2"/>
+        </insert>
+        <insert tableName="tariffs">
+            <column name="category" value="Moto"/>
+            <column name="rate_per_hour" valueNumeric="2200.00"/>
+            <column name="min_fraction" valueNumeric="1200.00"/>
+            <column name="capacity" valueNumeric="20"/>
+            <column name="snapshot_version" value="v3.2"/>
+        </insert>
+        <insert tableName="tariffs">
+            <column name="category" value="Camioneta / SUV"/>
+            <column name="rate_per_hour" valueNumeric="6000.00"/>
+            <column name="min_fraction" valueNumeric="3500.00"/>
+            <column name="capacity" valueNumeric="15"/>
+            <column name="snapshot_version" value="v3.2"/>
+        </insert>
+        <insert tableName="tariffs">
+            <column name="category" value="Bicicleta"/>
+            <column name="rate_per_hour" valueNumeric="1000.00"/>
+            <column name="min_fraction" valueNumeric="500.00"/>
+            <column name="capacity" valueNumeric="10"/>
+            <column name="snapshot_version" value="v3.2"/>
+        </insert>
+        <rollback>
+            <delete tableName="tariffs">
+                <where>category IN ('Carro', 'Moto', 'Camioneta / SUV', 'Bicicleta')</where>
+            </delete>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="v1.0.0-02-seed-settings" author="parkflow-dev">
+        <comment>Inserción de parámetros de configuración iniciales</comment>
+        <insert tableName="settings">
+            <column name="setting_key" value="system_name"/>
+            <column name="setting_value" value="ParkFlow 2099 - AI Quantum Parking"/>
+        </insert>
+        <insert tableName="settings">
+            <column name="setting_key" value="grace_period_mins"/>
+            <column name="setting_value" value="15"/>
+        </insert>
+        <insert tableName="settings">
+            <column name="setting_key" value="anti_passback"/>
+            <column name="setting_value" value="strict"/>
+        </insert>
+        <insert tableName="settings">
+            <column name="setting_key" value="currency"/>
+            <column name="setting_value" value="COP"/>
+        </insert>
+        <rollback>
+            <delete tableName="settings">
+                <where>setting_key IN ('system_name', 'grace_period_mins', 'anti_passback', 'currency')</where>
+            </delete>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.20.xsd">
+
+    <changeSet id="v1.0.0-03-seed-cells-zona-a" author="parkflow-dev">
+        <comment>Inicialización de 30 celdas de la Zona A (Carros)</comment>
+        <sql>
+            INSERT INTO `cells` (`id`, `zone`, `category`, `status`, `plate`, `entry_time`, `entry_timestamp`, `duration`, `current_total`, `rate_per_hour`, `maintenance_reason`, `ticket_id`) VALUES
+            ('A-01', 'Zona A', 'Carro', 'occupied', 'KLO-892', '11:15 AM', 1700000000000, '2h 17m', 13500.00, 4500.00, NULL, '#TK-89101'),
+            ('A-02', 'Zona A', 'Carro', 'free', NULL, NULL, NULL, NULL, 0.00, 4500.00, NULL, NULL),
+            ('A-03', 'Zona A', 'Carro', 'occupied', 'NVY-402', '12:40 PM', 1700000000000, '0h 52m', 4500.00, 4500.00, NULL, '#TK-89103'),
+            ('A-04', 'Zona A', 'Carro', 'free', NULL, NULL, NULL, NULL, 0.00, 4500.00, NULL, NULL),
+            ('A-05', 'Zona A', 'Carro', 'blocked', NULL, NULL, NULL, NULL, 0.00, 4500.00, 'CALIBRACIÓN DE SENSOR', NULL),
+            ('A-06', 'Zona A', 'Carro', 'occupied', 'TRK-219', '09:05 AM', 1700000000000, '4h 27m', 22500.00, 4500.00, NULL, '#TK-89106'),
+            ('A-07', 'Zona A', 'Carro', 'free', NULL, NULL, NULL, NULL, 0.00, 4500.00, NULL, NULL),
+            ('A-08', 'Zona A', 'Carro', 'occupied', 'GHI-913', '13:10 PM', 1700000000000, '0h 22m', 4500.00, 4500.00, NULL, '#TK-89108'),
+            ('A-09', 'Zona A', 'Carro', 'free', NULL, NULL, NULL, NULL, 0.00, 4500.00, NULL, NULL),
+            ('A-10', 'Zona A', 'Carro', 'occupied', 'MKZ-771', '10:30 AM', 1700000000000, '3h 02m', 18000.00, 4500.00, NULL, '#TK-89110'),
+            ('A-11', 'Zona A', 'Carro', 'occupied', 'ABC-123', '11:20 AM', 1700000000000, '2h 45m', 13500.00, 4500.00, NULL, '#TK-89111'),
+            ('A-12', 'Zona A', 'Carro', 'free', NULL, NULL, NULL, NULL, 0.00, 4500.00, NULL, NULL),
+            ('A-13', 'Zona A', 'Carro', 'occupied', 'URB-419', '09:00 AM', 1700000000000, '4h 30m', 22500.00, 4500.00, NULL, '#TK-89113'),
+            ('A-14', 'Zona A', 'Carro', 'occupied', 'FGH-456', '12:15 PM', 1700000000000, '1h 17m', 9000.00, 4500.00, NULL, '#TK-89114'),
+            ('A-15', 'Zona A', 'Carro', 'free', NULL, NULL, NULL, NULL, 0.00, 4500.00, NULL, NULL),
+            ('A-16', 'Zona A', 'Carro', 'occupied', 'JHG-789', '11:50 AM', 1700000000000, '1h 42m', 9000.00, 4500.00, NULL, '#TK-89116'),
+            ('A-17', 'Zona A', 'Carro', 'occupied', 'WER-234', '13:00 PM', 1700000000000, '0h 32m', 4500.00, 4500.00, NULL, '#TK-89117'),
+            ('A-18', 'Zona A', 'Carro', 'free', NULL, NULL, NULL, NULL, 0.00, 4500.00, NULL, NULL),
+            ('A-19', 'Zona A', 'Carro', 'occupied', 'TYU-567', '10:15 AM', 1700000000000, '3h 17m', 18000.00, 4500.00, NULL, '#TK-89119'),
+            ('A-20', 'Zona A', 'Carro', 'occupied', 'BNM-890', '12:30 PM', 1700000000000, '1h 02m', 9000.00, 4500.00, NULL, '#TK-89120'),
+            ('A-21', 'Zona A', 'Carro', 'occupied', 'QAZ-112', '11:40 AM', 1700000000000, '1h 52m', 9000.00, 4500.00, NULL, '#TK-89121'),
+            ('A-22', 'Zona A', 'Carro', 'occupied', 'WSX-334', '08:50 AM', 1700000000000, '4h 42m', 22500.00, 4500.00, NULL, '#TK-89122'),
+            ('A-23', 'Zona A', 'Carro', 'occupied', 'EDC-556', '12:20 PM', 1700000000000, '1h 12m', 9000.00, 4500.00, NULL, '#TK-89123'),
+            ('A-24', 'Zona A', 'Carro', 'free', NULL, NULL, NULL, NULL, 0.00, 4500.00, NULL, NULL),
+            ('A-25', 'Zona A', 'Carro', 'occupied', 'RFV-778', '10:45 AM', 1700000000000, '2h 47m', 13500.00, 4500.00, NULL, '#TK-89125'),
+            ('A-26', 'Zona A', 'Carro', 'free', NULL, NULL, NULL, NULL, 0.00, 4500.00, NULL, NULL),
+            ('A-27', 'Zona A', 'Carro', 'free', NULL, NULL, NULL, NULL, 0.00, 4500.00, NULL, NULL),
+            ('A-28', 'Zona A', 'Carro', 'free', NULL, NULL, NULL, NULL, 0.00, 4500.00, NULL, NULL),
+            ('A-29', 'Zona A', 'Carro', 'free', NULL, NULL, NULL, NULL, 0.00, 4500.00, NULL, NULL),
+            ('A-30', 'Zona A', 'Carro', 'free', NULL, NULL, NULL, NULL, 0.00, 4500.00, NULL, NULL)
+            ON DUPLICATE KEY UPDATE `zone`=VALUES(`zone`);
+        </sql>
+        <rollback>
+            <delete tableName="cells">
+                <where>id LIKE 'A-%'</where>
+            </delete>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="v1.0.0-03-seed-cells-zona-b" author="parkflow-dev">
+        <comment>Inicialización de 20 celdas de la Zona B (Motos)</comment>
+        <sql>
+            INSERT INTO `cells` (`id`, `zone`, `category`, `status`, `plate`, `entry_time`, `entry_timestamp`, `duration`, `current_total`, `rate_per_hour`, `maintenance_reason`, `ticket_id`) VALUES
+            ('B-01', 'Zona B', 'Moto', 'occupied', 'WZF-12D', '12:00 PM', 1700000000000, '1h 32m', 4400.00, 2200.00, NULL, '#TK-89201'),
+            ('B-02', 'Zona B', 'Moto', 'free', NULL, NULL, NULL, NULL, 0.00, 2200.00, NULL, NULL),
+            ('B-03', 'Zona B', 'Moto', 'occupied', 'XTR-45A', '11:10 AM', 1700000000000, '2h 22m', 6600.00, 2200.00, NULL, '#TK-89203'),
+            ('B-04', 'Zona B', 'Moto', 'occupied', 'MNB-78C', '10:00 AM', 1700000000000, '3h 32m', 8800.00, 2200.00, NULL, '#TK-89204'),
+            ('B-05', 'Zona B', 'Moto', 'blocked', NULL, NULL, NULL, NULL, 0.00, 2200.00, 'LIMPIEZA DE PISO', NULL),
+            ('B-06', 'Zona B', 'Moto', 'occupied', 'MTO-89F', '12:45 PM', 1700000000000, '1h 30m', 4400.00, 2200.00, NULL, '#TK-89206'),
+            ('B-07', 'Zona B', 'Moto', 'occupied', 'KJH-23B', '11:30 AM', 1700000000000, '2h 02m', 6600.00, 2200.00, NULL, '#TK-89207'),
+            ('B-08', 'Zona B', 'Moto', 'free', NULL, NULL, NULL, NULL, 0.00, 2200.00, NULL, NULL),
+            ('B-09', 'Zona B', 'Moto', 'occupied', 'BKN-032', '13:00 PM', 1700000000000, '0h 32m', 2200.00, 2200.00, NULL, '#TK-89209'),
+            ('B-10', 'Zona B', 'Moto', 'occupied', 'PLM-45C', '10:20 AM', 1700000000000, '3h 12m', 8800.00, 2200.00, NULL, '#TK-89210'),
+            ('B-11', 'Zona B', 'Moto', 'occupied', 'QWE-67D', '12:15 PM', 1700000000000, '1h 17m', 4400.00, 2200.00, NULL, '#TK-89211'),
+            ('B-12', 'Zona B', 'Moto', 'free', NULL, NULL, NULL, NULL, 0.00, 2200.00, NULL, NULL),
+            ('B-13', 'Zona B', 'Moto', 'occupied', 'ASD-89E', '11:45 AM', 1700000000000, '1h 47m', 4400.00, 2200.00, NULL, '#TK-89213'),
+            ('B-14', 'Zona B', 'Moto', 'occupied', 'ZXC-01F', '13:10 PM', 1700000000000, '0h 22m', 2200.00, 2200.00, NULL, '#TK-89214'),
+            ('B-15', 'Zona B', 'Moto', 'free', NULL, NULL, NULL, NULL, 0.00, 2200.00, NULL, NULL),
+            ('B-16', 'Zona B', 'Moto', 'occupied', 'RTY-23G', '09:40 AM', 1700000000000, '3h 52m', 8800.00, 2200.00, NULL, '#TK-89216'),
+            ('B-17', 'Zona B', 'Moto', 'occupied', 'FGH-45H', '12:35 PM', 1700000000000, '0h 57m', 2200.00, 2200.00, NULL, '#TK-89217'),
+            ('B-18', 'Zona B', 'Moto', 'free', NULL, NULL, NULL, NULL, 0.00, 2200.00, NULL, NULL),
+            ('B-19', 'Zona B', 'Moto', 'occupied', 'VBN-67J', '10:50 AM', 1700000000000, '2h 42m', 6600.00, 2200.00, NULL, '#TK-89219'),
+            ('B-20', 'Zona B', 'Moto', 'free', NULL, NULL, NULL, NULL, 0.00, 2200.00, NULL, NULL)
+            ON DUPLICATE KEY UPDATE `zone`=VALUES(`zone`);
+        </sql>
+        <rollback>
+            <delete tableName="cells">
+                <where>id LIKE 'B-%'</where>
+            </delete>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

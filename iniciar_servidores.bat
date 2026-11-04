@@ -44,12 +44,19 @@ if "%ERRORLEVEL%"=="0" (
     timeout /t 2 /nobreak >nul
 )
 
+:: 5. Ejecutar migraciones declarativas de Liquibase
+echo [*] Sincronizando migraciones de base de datos con Liquibase...
+if exist "C:\xampp\php\php.exe" (
+    "C:\xampp\php\php.exe" "%~dp0liquibase\run_migrations.php"
+)
+
 echo.
 echo =======================================================
 echo  [OK] Servicios listos en XAMPP!
 echo  - Base de Datos: MySQL (localhost:3306)
-echo  - Nombre DB: parkflow_db
+echo  - Nombre DB: parkflow_db (Migrada con Liquibase)
 echo  - API PHP: http://localhost/parkflow-api/
+echo  - Liquibase Status: http://localhost/parkflow-api/liquibase_migrate.php
 echo  - phpMyAdmin: http://localhost/phpmyadmin/
 echo =======================================================
 echo.

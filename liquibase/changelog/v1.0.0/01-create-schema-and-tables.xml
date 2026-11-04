@@ -1,0 +1,207 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.20.xsd">
+
+    <!-- TABLA: CELLS -->
+    <changeSet id="v1.0.0-01-create-cells-table" author="parkflow-dev">
+        <comment>Creación de tabla de celdas / bahías del parqueadero</comment>
+        <createTable tableName="cells">
+            <column name="id" type="VARCHAR(10)">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="zone" type="VARCHAR(20)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="category" type="VARCHAR(30)" defaultValue="Carro">
+                <constraints nullable="false"/>
+            </column>
+            <column name="status" type="VARCHAR(20)" defaultValue="free">
+                <constraints nullable="false"/>
+            </column>
+            <column name="plate" type="VARCHAR(20)"/>
+            <column name="entry_time" type="VARCHAR(20)"/>
+            <column name="entry_timestamp" type="BIGINT"/>
+            <column name="duration" type="VARCHAR(30)"/>
+            <column name="current_total" type="DECIMAL(10,2)" defaultValueNumeric="0.00"/>
+            <column name="rate_per_hour" type="DECIMAL(10,2)" defaultValueNumeric="4500.00">
+                <constraints nullable="false"/>
+            </column>
+            <column name="maintenance_reason" type="TEXT"/>
+            <column name="notes" type="TEXT"/>
+            <column name="ticket_id" type="VARCHAR(50)"/>
+            <column name="updated_at" type="TIMESTAMP" defaultValueComputed="CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"/>
+        </createTable>
+        <rollback>
+            <dropTable tableName="cells"/>
+        </rollback>
+    </changeSet>
+
+    <!-- TABLA: TARIFFS -->
+    <changeSet id="v1.0.0-01-create-tariffs-table" author="parkflow-dev">
+        <comment>Creación de tabla de tarifas operativas por categoría de vehículo</comment>
+        <createTable tableName="tariffs">
+            <column name="category" type="VARCHAR(30)">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="rate_per_hour" type="DECIMAL(10,2)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="min_fraction" type="DECIMAL(10,2)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="capacity" type="INT" defaultValueNumeric="30">
+                <constraints nullable="false"/>
+            </column>
+            <column name="snapshot_version" type="VARCHAR(20)" defaultValue="v3.2">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="TIMESTAMP" defaultValueComputed="CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"/>
+        </createTable>
+        <rollback>
+            <dropTable tableName="tariffs"/>
+        </rollback>
+    </changeSet>
+
+    <!-- TABLA: MOVEMENTS -->
+    <changeSet id="v1.0.0-01-create-movements-table" author="parkflow-dev">
+        <comment>Creación de tabla de auditoría de movimientos de entrada y salida</comment>
+        <createTable tableName="movements">
+            <column name="id" type="VARCHAR(50)">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="ticket_id" type="VARCHAR(50)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="plate" type="VARCHAR(20)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="vehicle_type" type="VARCHAR(30)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="cell_id" type="VARCHAR(10)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="type" type="VARCHAR(20)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="time" type="VARCHAR(20)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="timestamp" type="BIGINT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="amount" type="DECIMAL(10,2)" defaultValueNumeric="0.00"/>
+            <column name="created_at" type="TIMESTAMP" defaultValueComputed="CURRENT_TIMESTAMP"/>
+        </createTable>
+        <rollback>
+            <dropTable tableName="movements"/>
+        </rollback>
+    </changeSet>
+
+    <!-- TABLA: TRANSACTIONS -->
+    <changeSet id="v1.0.0-01-create-transactions-table" author="parkflow-dev">
+        <comment>Creación de tabla de transacciones de facturación y tickets</comment>
+        <createTable tableName="transactions">
+            <column name="id" type="VARCHAR(50)">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="plate" type="VARCHAR(20)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="vehicle_type" type="VARCHAR(30)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="cell_id" type="VARCHAR(10)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="entry_time" type="VARCHAR(30)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="entry_timestamp" type="BIGINT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="exit_time" type="VARCHAR(30)"/>
+            <column name="exit_timestamp" type="BIGINT"/>
+            <column name="duration" type="VARCHAR(30)" defaultValue="En Curso">
+                <constraints nullable="false"/>
+            </column>
+            <column name="snapshot_rate" type="DECIMAL(10,2)" defaultValueNumeric="0.00">
+                <constraints nullable="false"/>
+            </column>
+            <column name="total_paid" type="DECIMAL(10,2)" defaultValueNumeric="0.00">
+                <constraints nullable="false"/>
+            </column>
+            <column name="payment_method" type="VARCHAR(30)" defaultValue="Pendiente">
+                <constraints nullable="false"/>
+            </column>
+            <column name="operator" type="VARCHAR(50)" defaultValue="Admin">
+                <constraints nullable="false"/>
+            </column>
+            <column name="status" type="VARCHAR(20)" defaultValue="En Curso">
+                <constraints nullable="false"/>
+            </column>
+            <column name="notes" type="TEXT"/>
+            <column name="created_at" type="TIMESTAMP" defaultValueComputed="CURRENT_TIMESTAMP"/>
+        </createTable>
+        <rollback>
+            <dropTable tableName="transactions"/>
+        </rollback>
+    </changeSet>
+
+    <!-- TABLA: SETTINGS -->
+    <changeSet id="v1.0.0-01-create-settings-table" author="parkflow-dev">
+        <comment>Creación de tabla de parámetros y configuración general</comment>
+        <createTable tableName="settings">
+            <column name="setting_key" type="VARCHAR(50)">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="setting_value" type="TEXT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="TIMESTAMP" defaultValueComputed="CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"/>
+        </createTable>
+        <rollback>
+            <dropTable tableName="settings"/>
+        </rollback>
+    </changeSet>
+
+    <!-- TABLA: USERS -->
+    <changeSet id="v1.0.0-01-create-users-table" author="parkflow-dev">
+        <comment>Creación de tabla de usuarios, operadores y administradores</comment>
+        <createTable tableName="users">
+            <column name="id" type="INT" autoIncrement="true">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="identification" type="VARCHAR(50)">
+                <constraints unique="true" nullable="false"/>
+            </column>
+            <column name="name" type="VARCHAR(100)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="phone" type="VARCHAR(50)">
+                <constraints unique="true" nullable="false"/>
+            </column>
+            <column name="plate" type="VARCHAR(20)"/>
+            <column name="role" type="VARCHAR(30)" defaultValue="cliente">
+                <constraints nullable="false"/>
+            </column>
+            <column name="password_hash" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="password_signature" type="VARCHAR(64)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="badge" type="VARCHAR(50)"/>
+            <column name="shift" type="VARCHAR(50)"/>
+            <column name="created_at" type="TIMESTAMP" defaultValueComputed="CURRENT_TIMESTAMP"/>
+            <column name="last_login" type="TIMESTAMP"/>
+        </createTable>
+        <rollback>
+            <dropTable tableName="users"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

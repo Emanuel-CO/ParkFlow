@@ -27,3 +27,4 @@ if (!$action) {
 
 // Reenviar a la lógica central de auth.php con el mismo contexto
 require __DIR__ . '/auth.php';
+

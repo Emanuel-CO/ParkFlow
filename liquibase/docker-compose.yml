@@ -1,0 +1,18 @@
+# ==============================================================================
+# ParkFlow 2099 - Ejecución de Liquibase con Docker
+# Uso: docker compose -f docker-compose.yml run --rm liquibase update
+# ==============================================================================
+
+version: '3.8'
+
+services:
+  liquibase:
+    image: liquibase/liquibase:4.27.0
+    container_name: parkflow-liquibase
+    volumes:
+      - ./:/liquibase/workspace
+    working_dir: /liquibase/workspace
+    command: >
+      --defaultsFile=/liquibase/workspace/liquibase.properties
+      update
+    network_mode: host

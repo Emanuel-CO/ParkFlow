@@ -191,9 +191,17 @@ try {
         }
     }
 
+    // 9. Ejecutar motor Liquibase para sincronizar DATABASECHANGELOG y DATABASECHANGELOGLOCK
+    $liquibaseRunner = dirname(__DIR__) . '/liquibase/run_migrations.php';
+    if (file_exists($liquibaseRunner)) {
+        ob_start();
+        require $liquibaseRunner;
+        ob_end_clean();
+    }
+
     sendResponse([
         'success' => true,
-        'message' => '¡Base de datos `parkflow_db` configurada e inicializada exitosamente en MySQL (XAMPP)!',
+        'message' => '¡Base de datos `parkflow_db` configurada e inicializada exitosamente en MySQL (XAMPP) con Liquibase!',
         'database' => $db_name,
         'host' => "{$db_host}:{$db_port}",
         'counts' => [
@@ -202,6 +210,7 @@ try {
             'movements' => (int)$pdo->query("SELECT COUNT(*) FROM `movements`")->fetchColumn(),
             'transactions' => (int)$pdo->query("SELECT COUNT(*) FROM `transactions`")->fetchColumn(),
             'users' => (int)$pdo->query("SELECT COUNT(*) FROM `users`")->fetchColumn(),
+            'liquibase_changesets' => (int)$pdo->query("SELECT COUNT(*) FROM `DATABASECHANGELOG`")->fetchColumn(),
         ]
     ]);
 

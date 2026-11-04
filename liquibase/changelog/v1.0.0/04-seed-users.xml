@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.20.xsd">
+
+    <changeSet id="v1.0.0-04-seed-users" author="parkflow-dev">
+        <comment>Inserción de usuarios semilla autorizados con BCRYPT y SHA-256</comment>
+        <sql>
+            INSERT INTO `users` (`identification`, `name`, `phone`, `plate`, `role`, `password_hash`, `password_signature`, `badge`, `shift`) VALUES
+            ('admin.master', 'Ing. Valderrama (Admin Root)', '3001234567', 'ADM-001', 'administrador', '$2y$10$vO8wQkPqFw5mI.RjH936yeG2z7z9kE6jX/uJb5J9/e0a0j7s/aLme', '0b9c3f15db8b0ea17a3a31c50e20600f682d338f0e0dc2c9cbe8b776a3e5e4bb', 'ROOT-01', 'Turno Maestro 24/7'),
+            ('OP-418', 'Carlos Rojas', '3105554180', 'OPR-418', 'operador', '$2y$10$tZ2cK.m9xR3p5zQ1w4aE0uO9f7j2l8k1m5n9p3q7r1s5t9u3v7w1x', 'cf997193b22cfca78e7de85e68b5a0e9ec19d659adfa5c3a373b9e4a3b8fa3ce', 'OP-418', 'Turno Mañana [06:00 - 14:00]'),
+            ('OP-722', 'Diana Morales', '3157778901', 'OPR-722', 'operador', '$2y$10$bY3dM.p8wS2o4yR0v3bF9tN8g6k1k7j0l4m8o2p6q0r4s8t2u6v0w', '1e4e5cf4867990141f92e59103c80bf73bc2a4e4d58855cefb9a572a15f01e6a', 'OP-722', 'Turno Tarde [14:00 - 22:00]'),
+            ('1020304050', 'Alejandro Vélez', '3109876543', 'KLO-892', 'cliente', '$2y$10$sX1aJ.l8wQ2o4yP0v3aD9tN8e6i1k7j0l4m8p2q6r0s4t8u2v6w0x', 'ea9f864fa93d05e2694b92b67f4c5e317c2a7e78044737e41b9d40b4cbb19ad7', 'CLI-1020', NULL)
+            ON DUPLICATE KEY UPDATE `name`=VALUES(`name`);
+        </sql>
+        <rollback>
+            <delete tableName="users">
+                <where>identification IN ('admin.master', 'OP-418', 'OP-722', '1020304050')</where>
+            </delete>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.20.xsd">
+
+    <!-- ========================================================================= -->
+    <!-- PARKFLOW 2099 - MASTER CHANGELOG DE LIQUIBASE                             -->
+    <!-- Este archivo orquesta todas las versiones y migraciones de la base        -->
+    <!-- de datos de forma secuencial, determinista y auditable.                   -->
+    <!-- ========================================================================= -->
+
+    <!-- V1.0.0: ESQUEMA BASE & TABLAS MAESTRAS -->
+    <include file="v1.0.0/01-create-schema-and-tables.xml" relativeToChangelogFile="true"/>
+    <include file="v1.0.0/02-seed-tariffs-and-settings.xml" relativeToChangelogFile="true"/>
+    <include file="v1.0.0/03-seed-cells.xml" relativeToChangelogFile="true"/>
+    <include file="v1.0.0/04-seed-users.xml" relativeToChangelogFile="true"/>
+    <include file="v1.0.0/05-seed-movements-and-transactions.xml" relativeToChangelogFile="true"/>
+    <include file="v1.0.0/06-create-indexes.xml" relativeToChangelogFile="true"/>
+
+    <!-- V1.1.0: EXTENSIÓN PARA GESTIÓN DE OPERADORES DE TURNO -->
+    <include file="v1.1.0/01-add-shift-operators.xml" relativeToChangelogFile="true"/>
+
+</databaseChangeLog>
