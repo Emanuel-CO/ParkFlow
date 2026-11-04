@@ -103,14 +103,10 @@ export const Sidebar: React.FC = () => {
         </div>
       </div>
 
-      {/* ── LIVE CLOCK & DB STATUS ── */}
-      <div className="px-4 py-3 flex items-center justify-between" style={{ borderBottom: '1px solid rgba(0,240,255,0.07)' }}>
+      {/* ── LIVE CLOCK ── */}
+      <div className="px-4 py-3 flex items-center justify-center" style={{ borderBottom: '1px solid rgba(0,240,255,0.07)' }}>
         <div className="font-mono text-[14px] font-bold text-cyan-300 glow-text-cyan tracking-widest tabular-nums">
           {timeStr}
-        </div>
-        <div className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[9px] font-mono font-bold border ${isDbConnected ? 'bg-cyan-500/10 border-cyan-500/30 text-cyan-400' : 'bg-amber-500/10 border-amber-500/30 text-amber-400'}`}>
-          <span className={`w-1.5 h-1.5 rounded-full ${isDbConnected ? 'bg-cyan-400 animate-pulse' : 'bg-amber-400'}`} />
-          {isDbConnected ? 'SQL LIVE' : 'OFFLINE'}
         </div>
       </div>
 
