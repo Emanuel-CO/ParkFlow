@@ -32,6 +32,7 @@ export const Sidebar: React.FC = () => {
   const allNavItems: { id: ActiveView; label: string; sub: string; icon: string; color: string }[] = [
     { id: 'panel-operativo',       label: 'Panel Operativo',     sub: 'HUD Telemetría 3D',       icon: 'grid_view',      color: 'cyan'   },
     { id: 'portal-cliente',        label: 'Elegir Mi Puesto',    sub: 'Mapa & Auto-Ticket',      icon: 'local_parking',  color: 'emerald'},
+    { id: 'consulta-pago',         label: 'Mi Permanencia',      sub: 'Consultar & Pagar Ya',    icon: 'timer',          color: 'cyan'   },
     { id: 'mi-perfil-cliente',     label: 'Mi Perfil Conductor', sub: 'Billetera & Estado',      icon: 'account_circle', color: 'emerald'},
     { id: 'registro-de-entrada',   label: 'Registro Entrada',    sub: 'Escáner Óptico LPR',      icon: 'login',          color: 'emerald'},
     { id: 'salida-y-cobro',        label: 'Salida y Cobro',      sub: 'Liquidación Quantum',     icon: 'point_of_sale',  color: 'violet' },
@@ -41,7 +42,7 @@ export const Sidebar: React.FC = () => {
 
   const navItems = allNavItems.filter(item => {
     if (userRole === 'cliente') {
-      return ['portal-cliente', 'mi-perfil-cliente'].includes(item.id);
+      return ['portal-cliente', 'consulta-pago', 'mi-perfil-cliente'].includes(item.id);
     }
     if (userRole === 'operador') {
       return ['panel-operativo', 'registro-de-entrada', 'salida-y-cobro'].includes(item.id);

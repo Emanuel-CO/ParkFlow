@@ -106,6 +106,7 @@ export type ActiveView =
   | 'tarifas-y-celdas'
   | 'reportes-y-auditoria'
   | 'portal-cliente'
+  | 'consulta-pago'
   | 'mi-perfil-cliente';
 
 

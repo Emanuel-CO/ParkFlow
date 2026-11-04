@@ -12,6 +12,7 @@ import { ToastContainer } from './components/ToastContainer.tsx';
 import { XamppStatusModal } from './components/XamppStatusModal.tsx';
 import { PortalCliente } from './components/PortalCliente.tsx';
 import { MiPerfilCliente } from './components/MiPerfilCliente.tsx';
+import { MiPermanenciaCliente } from './components/MiPermanenciaCliente.tsx';
 import { playCyberFeedback } from './utils/audioAlert.ts';
 import { UserRole } from './types/parking.ts';
 
@@ -176,6 +177,7 @@ const AppContent: React.FC = () => {
 
           {/* PERMITTED VIEWS */}
           {activeView === 'portal-cliente'       && <PortalCliente />}
+          {activeView === 'consulta-pago'        && <MiPermanenciaCliente />}
           {activeView === 'mi-perfil-cliente'    && <MiPerfilCliente />}
           {activeView === 'panel-operativo'      && userRole !== 'cliente' && <PanelOperativo />}
           {activeView === 'registro-de-entrada'  && userRole !== 'cliente' && <RegistroEntrada />}

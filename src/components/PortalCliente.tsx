@@ -19,81 +19,7 @@ export const PortalCliente: React.FC = () => {
     driverName?: string;
   } | null>(null);
 
-  const [lookupPlate, setLookupPlate] = useState<string>('');
-  const [paySuccess, setPaySuccess] = useState<boolean>(false);
-  const [paidSummary, setPaidSummary] = useState<{ plate: string; total: number; cellId: string } | null>(null);
 
-  // Filter free bays
-  const freeBays = cells.filter(c => c.status === 'free');
-  const occupiedBays = cells.filter(c => c.status === 'occupied');
-
-  const handleOccupyBay = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!plate || plate.trim().length < 3) {
-      showToast('Por favor ingrese su matrícula / placa', 'warning');
-      return;
-    }
-    const cleanPlate = plate.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
-    const alreadyInside = cells.find(c => c.status === 'occupied' && c.plate && c.plate.trim().toUpperCase().replace(/[^A-Z0-9]/g, '') === cleanPlate);
-    if (alreadyInside) {
-      playCyberFeedback('laser', 0.35);
-      showToast(`BLOQUEO ANTI-PASSBACK: El vehículo ${plate.toUpperCase()} ya se encuentra registrado en el puesto ${alreadyInside.id}. No se permite registrar una misma placa dos veces.`, 'error');
-      return;
-    }
-    if (!selectedBay) {
-      showToast('Seleccione un puesto libre en el mapa', 'warning');
-      return;
-    }
-
-    playCyberFeedback('checkout', 0.25);
-    const driverName = currentUser?.name || 'Alejandro Vélez';
-    const driverDoc = currentUser?.document || '1020304050';
-    const driverPhone = currentUser?.phone || '310 987 6543';
-
-    const result = registerClientAutoOccupy(
-      selectedBay,
-      plate.trim().toUpperCase(),
-      vehicleType,
-      driverName,
-      driverDoc,
-      driverPhone
-    );
-    
-    if (result.success) {
-      const rate = vehicleType === 'Moto' ? 2200 : vehicleType === 'Camioneta / SUV' ? 6000 : 4500;
-      setIssuedTicket({
-        ticketId: result.ticketId || `#PK-CLI-${Math.floor(1000 + Math.random() * 9000)}`,
-        plate: plate.trim().toUpperCase(),
-        cellId: selectedBay,
-        category: vehicleType,
-        entryTime: currentTimeString || new Date().toLocaleTimeString(),
-        ratePerHour: rate,
-        driverName,
-      });
-      showToast(`¡Puesto ${selectedBay} asignado y barrera habilitada!`, 'success');
-      // Pick next free bay if available
-      const nextFree = cells.find(c => c.status === 'free' && c.id !== selectedBay);
-      if (nextFree) setSelectedBay(nextFree.id);
-    }
-  };
-
-  const handleOnlinePay = () => {
-    const targetPlate = (lookupPlate || 'KLO-892').trim().toUpperCase();
-    playCyberFeedback('checkout', 0.25);
-
-    const result = processCheckout(targetPlate, 'QR Nequi/Davi');
-    if (result.success) {
-      setPaidSummary({
-        plate: targetPlate,
-        total: result.total || 13500,
-        cellId: result.cellId || 'A-01',
-      });
-      setPaySuccess(true);
-      showToast('¡Pago en línea confirmado! Barrera de salida habilitada.', 'success');
-    } else {
-      showToast(result.error || 'No se encontró vehículo con esa placa', 'error');
-    }
-  };
 
   return (
     <div className="flex flex-col gap-6 p-6 max-w-6xl mx-auto w-full animate-fadeIn">
@@ -360,8 +286,20 @@ export const PortalCliente: React.FC = () => {
               </div>
 
               <div className="text-center font-mono text-[10px] text-slate-500">
-                Conserva este ticket digital para pre-pagar o registrar tu salida en la taquilla.
+                Conserva este ticket digital para consultar tu permanencia o liquidar tu salida.
               </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  playCyberFeedback('click', 0.2);
+                  setActiveView('consulta-pago');
+                }}
+                className="w-full py-2.5 rounded-xl font-hud text-xs font-black cyber-btn-cyan cursor-pointer flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(0,240,255,0.3)] mt-2"
+              >
+                <span className="material-symbols-outlined text-[16px]">timer</span>
+                VER MI PERMANENCIA & PAGAR YA →
+              </button>
             </div>
           ) : (
             <div 
@@ -376,62 +314,6 @@ export const PortalCliente: React.FC = () => {
             </div>
           )}
         </div>
-      </div>
-
-      {/* ── PASO 3: CONSULTAR Y PRE-PAGAR EN LÍNEA ── */}
-      <div 
-        className="p-6 rounded-2xl border border-violet-500/30 flex flex-col gap-4" 
-        style={{ background: 'rgba(10,8,28,0.85)' }}
-      >
-        <div className="flex items-center gap-2">
-          <span className="material-symbols-outlined text-violet-400 text-[26px]">payments</span>
-          <div>
-            <h2 className="font-hud text-base font-bold text-white tracking-wider">
-              ¿YA VAS A SALIR? CONSULTA TU PERMANENCIA & PAGA EN LÍNEA
-            </h2>
-            <p className="font-mono text-xs text-slate-400 mt-0.5">
-              Ingresa tu placa para ver cuánto llevas consumido y pagar inmediatamente con QR Nequi/Davi o Tarjeta.
-            </p>
-          </div>
-        </div>
-
-        <div className="flex flex-col sm:flex-row gap-3 pt-2">
-          <input
-            type="text"
-            placeholder="INGRESA TU PLACA (EJ. KLO-892)"
-            value={lookupPlate}
-            onChange={e => setLookupPlate(e.target.value.toUpperCase())}
-            className="flex-1 h-13 rounded-xl px-4 font-mono text-lg font-bold text-cyan-300 bg-black/60 border border-violet-500/40 focus:outline-none focus:border-violet-400"
-          />
-          <button
-            type="button"
-            onClick={handleOnlinePay}
-            className="px-6 h-13 rounded-xl font-hud text-xs font-bold cyber-btn-violet cursor-pointer flex items-center justify-center gap-2"
-          >
-            <span className="material-symbols-outlined text-[18px]">credit_card</span>
-            <span>CONSULTAR Y PAGAR ONLINE</span>
-          </button>
-        </div>
-
-        {paySuccess && paidSummary && (
-          <div className="p-4 rounded-xl border border-emerald-500/40 bg-emerald-950/40 text-emerald-300 font-mono text-xs flex flex-col sm:flex-row items-center justify-between gap-3 animate-fadeIn">
-            <div className="flex items-center gap-2">
-              <span className="material-symbols-outlined text-emerald-400 text-[24px]">verified</span>
-              <div>
-                <strong>¡Pago de ${paidSummary.total.toLocaleString('es-CO')} COP recibido con éxito para {paidSummary.plate}!</strong>
-                <p className="text-[11px] text-slate-300 mt-0.5">
-                  La celda {paidSummary.cellId} ha sido liberada. La barrera de salida se elevará automáticamente. Tienes 15 minutos de gracia.
-                </p>
-              </div>
-            </div>
-            <button 
-              onClick={() => setPaySuccess(false)} 
-              className="underline text-xs text-slate-400 hover:text-white cursor-pointer"
-            >
-              Cerrar
-            </button>
-          </div>
-        )}
       </div>
 
     </div>

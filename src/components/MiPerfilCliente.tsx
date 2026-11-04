@@ -3,7 +3,11 @@ import { useParking } from '../context/ParkingContext.tsx';
 import { playCyberFeedback } from '../utils/audioAlert.ts';
 
 export const MiPerfilCliente: React.FC = () => {
-  const { currentUser, setActiveView, showToast } = useParking();
+  const { currentUser, setActiveView, showToast, cells } = useParking();
+
+  const userPlate = (currentUser?.plate || 'KLO-892').trim().toUpperCase();
+  const cleanPlate = userPlate.replace(/[^A-Z0-9]/g, '');
+  const clientInBay = cells.find(c => c.status === 'occupied' && c.plate && c.plate.trim().toUpperCase().replace(/[^A-Z0-9]/g, '') === cleanPlate);
 
   return (
     <div className="flex flex-col gap-6 p-6 max-w-5xl mx-auto w-full animate-fadeIn">
@@ -116,45 +120,51 @@ export const MiPerfilCliente: React.FC = () => {
       <div className="p-6 rounded-2xl border border-cyan-500/25 flex flex-col gap-4" style={{ background: 'rgba(6,12,32,0.85)' }}>
         <div className="font-hud text-sm font-bold text-white flex items-center justify-between pb-2 border-b border-cyan-500/20">
           <span className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
-            ESTADO ACTUAL DE TU VEHÍCULO ({currentUser?.plate || 'KLO-892'})
+            <span className={`w-2.5 h-2.5 rounded-full ${clientInBay ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
+            ESTADO ACTUAL DE TU VEHÍCULO ({userPlate})
           </span>
-          <span className="font-mono text-xs text-emerald-400 font-bold">EN PATIO DE PARQUEO</span>
+          <span className={`font-mono text-xs font-bold ${clientInBay ? 'text-emerald-400' : 'text-slate-400'}`}>
+            {clientInBay ? 'EN PATIO DE PARQUEO' : 'FUERA DE PATIO'}
+          </span>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 font-mono text-xs">
           <div className="p-3.5 rounded-xl bg-black/50 border border-cyan-500/20">
             <span className="text-slate-400 text-[10px] block">Bahía Ocupada</span>
-            <strong className="font-hud text-xl text-cyan-300">A-02</strong>
+            <strong className="font-hud text-xl text-cyan-300">{clientInBay ? clientInBay.id : 'Sin Asignar'}</strong>
           </div>
           <div className="p-3.5 rounded-xl bg-black/50 border border-cyan-500/20">
             <span className="text-slate-400 text-[10px] block">Hora de Entrada</span>
-            <strong className="font-hud text-base text-white">11:15 AM</strong>
+            <strong className="font-hud text-base text-white">{clientInBay?.entryTime || '--:--'}</strong>
           </div>
           <div className="p-3.5 rounded-xl bg-black/50 border border-cyan-500/20">
-            <span className="text-slate-400 text-[10px] block">Tiempo Acumulado</span>
-            <strong className="font-hud text-base text-emerald-400">2h 17m</strong>
+            <span className="text-slate-400 text-[10px] block">Tiempo en Vivo</span>
+            <strong className="font-hud text-base text-emerald-400">{clientInBay?.duration || '0h 00m 00s'}</strong>
           </div>
           <div className="p-3.5 rounded-xl bg-black/50 border border-cyan-500/20">
             <span className="text-slate-400 text-[10px] block">Total Liquidado</span>
-            <strong className="font-hud text-base text-cyan-300">$13.500 COP</strong>
+            <strong className="font-hud text-base text-cyan-300">
+              {clientInBay ? `$${(clientInBay.currentTotal || 13500).toLocaleString('es-CO')} COP` : '$0 COP'}
+            </strong>
           </div>
         </div>
 
-        <div className="flex justify-end gap-3 pt-2">
+        <div className="flex flex-wrap justify-end gap-3 pt-2">
           <button
             type="button"
             onClick={() => { playCyberFeedback('click', 0.2); setActiveView('portal-cliente'); }}
-            className="px-4 py-2 rounded-xl font-hud text-xs text-cyan-300 border border-cyan-500/40 hover:bg-cyan-500/20 cursor-pointer"
+            className="px-4 py-2 rounded-xl font-hud text-xs text-cyan-300 border border-cyan-500/40 hover:bg-cyan-500/20 cursor-pointer flex items-center gap-1.5"
           >
-            VER EN MAPA 3D
+            <span className="material-symbols-outlined text-[15px]">grid_view</span>
+            ELEGIR MI PUESTO
           </button>
           <button
             type="button"
-            onClick={() => { playCyberFeedback('checkout', 0.2); setActiveView('portal-cliente'); }}
-            className="px-5 py-2 rounded-xl font-hud text-xs font-black cyber-btn-violet cursor-pointer"
+            onClick={() => { playCyberFeedback('click', 0.2); setActiveView('consulta-pago'); }}
+            className="px-5 py-2.5 rounded-xl font-hud text-xs font-black cyber-btn-emerald cursor-pointer flex items-center gap-1.5 shadow-[0_0_15px_rgba(0,255,157,0.3)]"
           >
-            PAGAR EN LÍNEA AHORA
+            <span className="material-symbols-outlined text-[16px]">timer</span>
+            MI PERMANENCIA // CONSULTAR & PAGAR YA
           </button>
         </div>
       </div>
