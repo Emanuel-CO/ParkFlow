@@ -670,6 +670,21 @@
             try {
               const parsed = JSON.parse(e.newValue);
               setCells(parsed);
+              // Si el cliente tenía un pago pendiente de aprobación y la celda fue liberada por el operador
+              setClientPaymentReceipt(prev => {
+                if (prev && prev.status === 'pending_operator_approval') {
+                  const target = parsed.find(c => c.id === prev.cellId);
+                  if (target && target.status === 'free') {
+                    return {
+                      ...prev,
+                      status: 'approved',
+                      isApproved: true,
+                      paidAt: prev.paidAt || new Date().toLocaleTimeString(),
+                    };
+                  }
+                }
+                return prev;
+              });
             } catch(err) {}
           }
           if (e.key === 'parkflow_last_event' && e.newValue) {
@@ -685,9 +700,38 @@
               } else if (ev.type === 'client_rejected') {
                 playCyberAudio('laser');
                 showToast(`❌ SOLICITUD RECHAZADA: La solicitud para la bahía ${ev.cellId} fue rechazada por el operador.`, 'error');
+              } else if (ev.type === 'client_payment_request') {
+                playCyberAudio('laser');
+                showToast(`🔔 PAGO NOTIFICADO EN SALIDA: ${ev.driver} (${ev.plate}) reportó pago de $${ev.amount?.toLocaleString('es-CO')} COP en ${ev.methodText || 'Taquilla'}. Pendiente en Salida y Cobro.`, 'warning');
+              } else if (ev.type === 'client_payment_approved') {
+                playCyberAudio('checkout');
+                showToast(`✅ PAGO CONFIRMADO: El operador validó la salida para el vehículo ${ev.plate}. Barrera abierta.`, 'success');
+                setClientPaymentReceipt(prev => (prev && prev.plate === ev.plate) ? {
+                  ...prev,
+                  status: 'approved',
+                  isApproved: true,
+                  paidAt: ev.time || new Date().toLocaleTimeString(),
+                } : {
+                  receiptId: `REC-${Date.now().toString().slice(-6)}`,
+                  ticketId: `#TK-2099-${(ev.cellId || 'A01').replace('-', '')}`,
+                  plate: ev.plate,
+                  cellId: ev.cellId,
+                  category: 'Carro',
+                  driverName: ev.driver || 'Cliente',
+                  duration: 'Permanencia Liquidada',
+                  amountPaid: ev.amount || 0,
+                  paymentMethod: 'Pago Validado por Operador',
+                  paidAt: ev.time || new Date().toLocaleTimeString(),
+                  status: 'approved',
+                  isApproved: true,
+                  toleranceMinutes: 15,
+                });
+              } else if (ev.type === 'client_payment_cancelled') {
+                showToast(`Reporte de pago para bahía ${ev.cellId || ''} (${ev.plate || ''}) cancelado.`, 'info');
+                setClientPaymentReceipt(prev => (prev && prev.plate === ev.plate) ? null : prev);
               } else {
                 playCyberAudio('laser');
-                showToast(`📡 TELEMETRÍA EN VIVO: El cliente ${ev.driver} (${ev.plate}) ocupó la bahía ${ev.cellId}`, 'info');
+                showToast(`📡 TELEMETRÍA EN VIVO: Evento en bahía ${ev.cellId || ''}`, 'info');
               }
             } catch(err) {}
           }
@@ -1284,7 +1328,7 @@
         showToast('¡Pago en línea completado! 15 min de tolerancia para salir.', 'success');
       };
 
-      // Client Checkout Decision: Tarjeta o Efectivo con Recibo Digital
+      // Client Checkout Decision: Tarjeta o Efectivo con Notificación a Operador en Salida y Cobro
       const handleClientCheckoutDecision = (targetPlate, method) => {
         const clean = (targetPlate || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
         const targetCell = cells.find(c => c.status === 'occupied' && c.plate && c.plate.trim().toUpperCase().replace(/[^A-Z0-9]/g, '') === clean);
@@ -1296,49 +1340,175 @@
         }
 
         playCyberAudio('checkout');
-        const rate = targetCell.ratePerHour || (targetCell.type === 'Moto' ? 2500 : targetCell.type === 'Pesado' ? 9000 : 5000);
         const liveDur = getLiveDuration(targetCell);
         const amount = calculateLiveAmount(targetCell);
+        const now = new Date();
+        const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        const receiptId = `REC-PEND-${Date.now().toString().slice(-6)}`;
 
-        const receipt = {
-          receiptId: `REC-${Date.now().toString().slice(-6)}`,
+        const payInfo = {
+          receiptId: receiptId,
           ticketId: targetCell.ticketId || `TK-${Math.floor(1000 + Math.random() * 9000)}`,
           plate: targetCell.plate,
           cellId: targetCell.id,
-          vehicleType: targetCell.type || 'Carro',
-          driverName: targetCell.driverName || currentUser?.name || 'Cliente',
-          entryTime: targetCell.entryTime || '11:15 AM',
+          category: targetCell.category || targetCell.type || 'Carro',
+          driverName: targetCell.driverName || currentUser?.name || 'Cliente Web',
+          driverDoc: targetCell.driverDoc || currentUser?.identification || 'N/A',
+          entryTime: targetCell.entryTime || '08:30 AM',
           duration: liveDur,
           amountPaid: amount,
-          paymentMethod: method === 'tarjeta' ? 'Tarjeta de Crédito / Débito (En Línea)' : 'Efectivo (Liquidación Taquilla / Tótem)',
-          methodCode: method,
-          paidAt: new Date().toLocaleTimeString(),
+          amount: amount,
+          paymentMethod: method === 'tarjeta' ? 'Tarjeta en Línea (Reportado por Cliente)' : 'Efectivo en Taquilla (Reportado por Cliente)',
+          method: method,
+          paidAt: timeStr,
+          timeStr: timeStr,
+          timestamp: Date.now(),
+          status: 'pending_operator_approval',
           toleranceMinutes: 15,
         };
 
-        setClientPaymentReceipt(receipt);
+        // NOTA: NO liberar la celda de una vez.
+        // Se marca la celda como con reporte de pago pendiente de validación por el operador en Salida y Cobro.
+        const updated = cells.map(c => c.id === targetCell.id ? {
+          ...c,
+          isPaymentPendingApproval: true,
+          pendingPayment: payInfo
+        } : c);
+
+        setCells(updated);
+        try { localStorage.setItem('parkflow_cells', JSON.stringify(updated)); } catch(e) {}
+
+        const evData = {
+          id: Date.now(),
+          type: 'client_payment_request',
+          cellId: targetCell.id,
+          plate: targetCell.plate,
+          driver: payInfo.driverName,
+          amount: amount,
+          method: method,
+          methodText: payInfo.paymentMethod,
+          time: timeStr,
+          timestamp: Date.now()
+        };
+        setLastLiveEvent(evData);
+        try { localStorage.setItem('parkflow_last_event', JSON.stringify(evData)); } catch(e) {}
+
+        // En el estado del cliente, guardar el recibo en estado pendiente
+        setClientPaymentReceipt(payInfo);
+
+        showToast(
+          method === 'tarjeta' 
+            ? `⏳ Reporte de pago con tarjeta ($${amount.toLocaleString('es-CO')} COP) enviado al operador en Salida y Cobro. En espera de confirmación.`
+            : `⏳ Notificación de pago en efectivo ($${amount.toLocaleString('es-CO')} COP) enviada a taquilla de salida. El operador validará tu salida.`,
+          'info'
+        );
+      };
+
+      // Confirmación del pago reportado por el cliente por parte del Operador en Salida y Cobro
+      const handleConfirmClientPayment = (cellId) => {
+        const targetCell = cells.find(c => c.id === cellId);
+        if (!targetCell) return;
+
+        playCyberAudio('checkout');
+        const now = new Date();
+        const payInfo = targetCell.pendingPayment || {};
+        const liveDur = getLiveDuration(targetCell);
+        const totalPaid = payInfo.amount || calculateLiveAmount(targetCell);
+        const methodStr = payInfo.method === 'tarjeta' ? 'Tarjeta de Crédito / Débito (Aprobado por Operador)' : 'Efectivo en Taquilla (Validado por Operador)';
+
+        const finalReceipt = {
+          receiptId: `REC-${Date.now().toString().slice(-6)}`,
+          ticketId: targetCell.ticketId || `#TK-2099-${targetCell.id.replace('-', '')}`,
+          plate: targetCell.plate,
+          cellId: targetCell.id,
+          category: targetCell.category || targetCell.type || 'Carro',
+          driverName: targetCell.driverName || 'Cliente',
+          entryTime: targetCell.entryTime || '08:30 AM',
+          exitTime: now.toLocaleTimeString(),
+          duration: liveDur,
+          totalDue: totalPaid,
+          amountReceived: totalPaid,
+          amountPaid: totalPaid,
+          change: 0,
+          paymentMethod: methodStr,
+          operatorName: currentUser?.name || 'Operador de Turno',
+          operatorBadge: currentUser?.badge || 'OP-418',
+          timestamp: now.toLocaleString('es-CO'),
+          paidAt: now.toLocaleTimeString(),
+          status: 'approved',
+          toleranceMinutes: 15,
+        };
+
+        setCheckoutReceipt(finalReceipt);
+        setCheckoutSuccess(true);
+
+        // Si el cliente está en la misma sesión/pestaña, actualizar su recibo final
+        if (clientPaymentReceipt && clientPaymentReceipt.cellId === cellId) {
+          setClientPaymentReceipt({ ...finalReceipt, isApproved: true });
+        }
 
         // Liberar la celda en tiempo real
-        const updated = cells.map(c => c.id === targetCell.id ? {
+        const updated = cells.map(c => c.id === cellId ? {
           ...c,
           status: 'free',
           plate: undefined,
+          duration: undefined,
           driverName: undefined,
           isClientAutoOccupied: undefined,
           entryTimestamp: undefined,
           occupiedTimestamp: undefined,
-          duration: undefined,
-          currentTotal: undefined
+          currentTotal: undefined,
+          ticketId: undefined,
+          isPaymentPendingApproval: undefined,
+          pendingPayment: undefined,
         } : c);
+
         setCells(updated);
         try { localStorage.setItem('parkflow_cells', JSON.stringify(updated)); } catch(e) {}
 
-        showToast(
-          method === 'tarjeta' 
-            ? `✅ Pago de $${amount.toLocaleString('es-CO')} COP con tarjeta exitoso. Tienes 15 min de gracia.`
-            : `✅ Orden de pago en efectivo generada ($${amount.toLocaleString('es-CO')} COP). Bahía ${targetCell.id} liberada.`,
-          'success'
-        );
+        const evData = {
+          id: Date.now(),
+          type: 'client_payment_approved',
+          cellId: cellId,
+          plate: targetCell.plate,
+          driver: targetCell.driverName,
+          amount: totalPaid,
+          time: now.toLocaleTimeString(),
+          timestamp: Date.now()
+        };
+        setLastLiveEvent(evData);
+        try { localStorage.setItem('parkflow_last_event', JSON.stringify(evData)); } catch(e) {}
+
+        showToast(`✅ ¡Pago confirmado! Vehículo ${targetCell.plate} liquidado exitosamente. Bahía ${cellId} liberada y barrera abierta.`, 'success');
+      };
+
+      // Cancelación de reporte de pago por parte del cliente
+      const handleCancelClientPayment = (cellId) => {
+        playCyberAudio('click');
+        const targetCell = cells.find(c => c.id === cellId);
+        const updated = cells.map(c => c.id === cellId ? {
+          ...c,
+          isPaymentPendingApproval: false,
+          pendingPayment: undefined,
+        } : c);
+
+        setCells(updated);
+        try { localStorage.setItem('parkflow_cells', JSON.stringify(updated)); } catch(e) {}
+
+        if (clientPaymentReceipt && clientPaymentReceipt.cellId === cellId) {
+          setClientPaymentReceipt(null);
+        }
+
+        const evData = {
+          type: 'client_payment_cancelled',
+          cellId: cellId,
+          plate: targetCell?.plate,
+          timestamp: Date.now()
+        };
+        setLastLiveEvent(evData);
+        try { localStorage.setItem('parkflow_last_event', JSON.stringify(evData)); } catch(e) {}
+
+        showToast('Reporte de pago cancelado. Puedes volver a consultar o elegir otro método.', 'info');
       };
 
       const handleConfirmPayment = (targetCell, totalDue, method, received) => {
@@ -1383,6 +1553,10 @@
         setCheckoutReceipt(receipt);
         setCheckoutSuccess(true);
 
+        if (clientPaymentReceipt && clientPaymentReceipt.cellId === targetCell.id) {
+          setClientPaymentReceipt({ ...receipt, amountPaid: totalDue, status: 'approved', isApproved: true, paidAt: now.toLocaleTimeString() });
+        }
+
         // Liberar la celda seleccionada en tiempo real
         const updated = cells.map(c => c.id === targetCell.id ? {
           ...c,
@@ -1394,7 +1568,9 @@
           entryTimestamp: undefined,
           occupiedTimestamp: undefined,
           currentTotal: undefined,
-          ticketId: undefined
+          ticketId: undefined,
+          isPaymentPendingApproval: undefined,
+          pendingPayment: undefined,
         } : c);
         setCells(updated);
         try { localStorage.setItem('parkflow_cells', JSON.stringify(updated)); } catch(e) {}
@@ -1402,11 +1578,13 @@
         // Enviar telemetría de salida
         const evData = {
           id: Date.now(),
-          type: 'exit',
+          type: targetCell.isPaymentPendingApproval ? 'client_payment_approved' : 'exit',
           cellId: targetCell.id,
           plate: targetCell.plate,
-          category: targetCell.category || targetCell.type || 'Carro',
+          driver: targetCell.driverName,
+          amount: totalDue,
           time: now.toLocaleTimeString(),
+          category: targetCell.category || targetCell.type || 'Carro',
           message: `Salida de taquilla: ${targetCell.plate} liberó bahía ${targetCell.id}. Liquidado $${totalDue.toLocaleString('es-CO')} COP.`
         };
         setLastLiveEvent(evData);
@@ -1557,6 +1735,7 @@
       // Filtered navigation based on Role
       const getNavItems = () => {
         const pendingCount = cells.filter(c => c.status === 'reserved' || c.isPendingApproval).length;
+        const pendingPaymentsCount = cells.filter(c => c.status === 'occupied' && (c.isPaymentPendingApproval || c.pendingPayment)).length;
         if (userRole === 'cliente') {
           return [
             { id: 'portal-cliente', label: 'Elegir Mi Puesto', sub: 'Mapa & Auto-Ticket', icon: 'local_parking' },
@@ -1568,7 +1747,7 @@
           return [
             { id: 'panel-operativo', label: 'Panel Operativo', sub: pendingCount > 0 ? `🔔 ${pendingCount} Solicitudes` : 'HUD Telemetría 3D', icon: 'grid_view' },
             { id: 'registro-de-entrada', label: 'Registro Entrada', sub: pendingCount > 0 ? `(${pendingCount} Pendientes)` : 'Escáner Óptico LPR', icon: 'login' },
-            { id: 'salida-y-cobro', label: 'Salida y Cobro', sub: 'Liquidación Taquilla', icon: 'point_of_sale' },
+            { id: 'salida-y-cobro', label: 'Salida y Cobro', sub: pendingPaymentsCount > 0 ? `🔔 ${pendingPaymentsCount} Pagos Pendientes` : 'Liquidación Taquilla', icon: 'point_of_sale' },
           ];
         }
         // Administrador gets all!
@@ -1576,7 +1755,7 @@
           { id: 'panel-operativo', label: 'Panel Operativo', sub: pendingCount > 0 ? `🔔 ${pendingCount} Solicitudes` : 'HUD Telemetría 3D', icon: 'grid_view' },
           { id: 'portal-cliente', label: 'Portal Cliente', sub: 'Vista Conductor', icon: 'person' },
           { id: 'registro-de-entrada', label: 'Registro Entrada', sub: pendingCount > 0 ? `(${pendingCount} Pendientes)` : 'Escáner Óptico LPR', icon: 'login' },
-          { id: 'salida-y-cobro', label: 'Salida y Cobro', sub: 'Liquidación Quantum', icon: 'point_of_sale' },
+          { id: 'salida-y-cobro', label: 'Salida y Cobro', sub: pendingPaymentsCount > 0 ? `🔔 ${pendingPaymentsCount} Pagos Pendientes` : 'Liquidación Quantum', icon: 'point_of_sale' },
           { id: 'tarifas-y-celdas', label: 'Tarifas y Celdas', sub: 'Matrices de Control', icon: 'tune' },
           { id: 'reportes-y-auditoria', label: 'Reportes', sub: 'Ledger Blockchain', icon: 'analytics' },
         ];
@@ -1650,7 +1829,7 @@
                   <span className="material-symbols-outlined text-[20px]">{item.icon}</span>
                   <div className="flex flex-col leading-tight">
                     <span className="font-hud text-[11px] font-bold">{item.label}</span>
-                    <span className="font-mono text-[9px] text-slate-500">{item.sub}</span>
+                    <span className={`font-mono text-[9px] ${item.sub && item.sub.includes('🔔') ? 'text-amber-400 font-bold animate-pulse' : 'text-slate-500'}`}>{item.sub}</span>
                   </div>
                 </button>
               ))}
@@ -1698,9 +1877,21 @@
                   <span>ZONA CLIENTE SEGURA // AISLADA</span>
                 </div>
               ) : (
-                <div className="flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-hud font-bold border border-emerald-500/40 bg-emerald-500/10 text-emerald-300 shadow-[0_0_12px_rgba(0,255,157,0.2)]">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-                  <span>SISTEMA NOMINAL</span>
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-hud font-bold border border-emerald-500/40 bg-emerald-500/10 text-emerald-300 shadow-[0_0_12px_rgba(0,255,157,0.2)]">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                    <span>SISTEMA NOMINAL</span>
+                  </div>
+                  {cells.filter(c => c.status === 'occupied' && (c.isPaymentPendingApproval || c.pendingPayment)).length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => { playCyberAudio('click'); setActiveView('salida-y-cobro'); }}
+                      className="flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-hud font-bold border border-amber-500/60 bg-amber-500/20 text-amber-300 shadow-[0_0_15px_rgba(245,158,11,0.4)] cursor-pointer hover:bg-amber-500/30 transition-all animate-pulse"
+                    >
+                      <span className="material-symbols-outlined text-[14px]">notifications_active</span>
+                      <span>{cells.filter(c => c.status === 'occupied' && (c.isPaymentPendingApproval || c.pendingPayment)).length} PAGO(S) EN SALIDA</span>
+                    </button>
+                  )}
                 </div>
               )}
             </div>
@@ -2142,6 +2333,22 @@
               const liveAmount = clientOccupiedCell ? calculateLiveAmount(clientOccupiedCell) : 13500;
               const liveDur = clientOccupiedCell ? getLiveDuration(clientOccupiedCell) : '--';
 
+              const activePendingPay = (clientPaymentReceipt && clientPaymentReceipt.status === 'pending_operator_approval')
+                ? clientPaymentReceipt
+                : (clientOccupiedCell && clientOccupiedCell.isPaymentPendingApproval)
+                  ? (clientOccupiedCell.pendingPayment || {
+                      ticketId: clientOccupiedCell.ticketId || `#TK-2099-${clientOccupiedCell.id.replace('-', '')}`,
+                      plate: clientOccupiedCell.plate,
+                      cellId: clientOccupiedCell.id,
+                      amount: liveAmount,
+                      amountPaid: liveAmount,
+                      duration: liveDur,
+                      paymentMethod: 'Pago Notificado por Conductor',
+                      paidAt: clientOccupiedCell.pendingPayment?.paidAt || 'En Validación',
+                      status: 'pending_operator_approval'
+                    })
+                  : null;
+
               return (
                 <div className="flex flex-col gap-6 animate-fadeIn max-w-5xl mx-auto w-full">
                   {/* Header Banner */}
@@ -2207,8 +2414,87 @@
                     </div>
                   </div>
 
-                  {/* Payment Receipt / Pase de Salida Modal/Card if Paid */}
-                  {clientPaymentReceipt ? (
+                  {/* Payment Receipt / Pending Approval / Approved Receipt */}
+                  {activePendingPay ? (
+                    <div className="p-8 rounded-3xl border border-amber-500/50 bg-gradient-to-b from-amber-950/40 via-black/80 to-black/90 shadow-[0_0_50px_rgba(245,158,11,0.25)] flex flex-col gap-6 animate-fadeIn">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-amber-500/30 gap-3">
+                        <div className="flex items-center gap-3">
+                          <div className="w-12 h-12 rounded-xl bg-amber-500/20 border border-amber-400 flex items-center justify-center text-amber-400 text-2xl">
+                            <span className="material-symbols-outlined text-[28px] animate-pulse">hourglass_top</span>
+                          </div>
+                          <div>
+                            <span className="font-mono text-[10px] text-amber-400 font-bold block">// ESTADO DE TRANSACCIÓN: EN ESPERA</span>
+                            <h2 className="font-hud text-xl font-black text-white">PAGO EN PROCESO DE VALIDACIÓN POR OPERADOR</h2>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-300 font-mono text-xs">
+                          <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
+                          <span>BARRERA EN ESPERA DE CONFIRMACIÓN</span>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                        <div className="p-4 rounded-2xl bg-black/70 border border-amber-500/30 flex flex-col items-center justify-center text-center gap-2">
+                          <span className="material-symbols-outlined text-amber-400 text-[48px] animate-bounce">pending_actions</span>
+                          <span className="font-mono text-xs text-amber-300 font-bold">NOTIFICACIÓN ENVIADA</span>
+                          <span className="font-mono text-[10px] text-slate-400">El operador en taquilla de salida está revisando tu pago</span>
+                        </div>
+
+                        <div className="p-4 rounded-2xl bg-black/70 border border-amber-500/30 font-mono text-xs flex flex-col justify-between gap-2.5">
+                          <div className="flex justify-between">
+                            <span className="text-slate-400">Placa:</span>
+                            <strong className="text-yellow-300 font-black text-base">{activePendingPay.plate}</strong>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-slate-400">Bahía Asignada:</span>
+                            <span className="text-cyan-300 font-bold">{activePendingPay.cellId}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-slate-400">Permanencia Reportada:</span>
+                            <span className="text-white font-bold">{activePendingPay.duration || liveDur}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-slate-400">Método Notificado:</span>
+                            <span className="text-amber-300 font-bold">{activePendingPay.paymentMethod}</span>
+                          </div>
+                          <div className="flex justify-between border-t border-white/10 pt-1.5 text-slate-400">
+                            <span>Hora de Reporte:</span>
+                            <span className="text-slate-200">{activePendingPay.paidAt || activePendingPay.timeStr || '--'}</span>
+                          </div>
+                        </div>
+
+                        <div className="p-5 rounded-2xl bg-gradient-to-br from-amber-950/60 to-black/80 border border-amber-500/40 flex flex-col justify-between text-center gap-3">
+                          <div>
+                            <span className="font-mono text-[10px] text-slate-400 uppercase tracking-widest block">VALOR A LIQUIDAR</span>
+                            <div className="font-hud text-3xl font-black text-amber-300 glow-text-amber mt-1">
+                              ${(activePendingPay.amountPaid || activePendingPay.amount || liveAmount).toLocaleString('es-CO')} COP
+                            </div>
+                          </div>
+
+                          <div className="p-2.5 rounded-xl bg-black/60 border border-amber-500/30 font-mono text-xs text-amber-300 flex items-center justify-center gap-2">
+                            <span className="material-symbols-outlined text-[16px] animate-spin">sync</span>
+                            <span>Esperando validación del operador...</span>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => handleCancelClientPayment(activePendingPay.cellId)}
+                            className="w-full py-2.5 rounded-xl font-hud text-xs font-bold bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 text-rose-300 cursor-pointer"
+                          >
+                            CANCELAR REPORTE DE PAGO
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-200 font-mono text-xs flex items-center gap-3">
+                        <span className="material-symbols-outlined text-amber-400 text-[24px]">info</span>
+                        <span>
+                          Tu reporte de pago ha sido transmitido en tiempo real al operador en <strong>Salida y Cobro</strong>. Tan pronto como el operador confirme la recepción del pago, esta pantalla se actualizará automáticamente con tu <strong>Pase de Salida Autorizado</strong> y la barrera se elevará.
+                        </span>
+                      </div>
+                    </div>
+                  ) : (clientPaymentReceipt && (clientPaymentReceipt.status === 'approved' || clientPaymentReceipt.isApproved)) ? (
                     <div className="p-8 rounded-3xl border border-emerald-500/50 bg-gradient-to-b from-emerald-950/40 via-black/80 to-black/90 shadow-[0_0_50px_rgba(0,255,157,0.25)] flex flex-col gap-6 animate-fadeIn">
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-emerald-500/30 gap-3">
                         <div className="flex items-center gap-3">
@@ -2261,7 +2547,7 @@
                           <div>
                             <span className="font-mono text-[10px] text-slate-400 uppercase tracking-widest block">TOTAL CANCELADO</span>
                             <div className="font-hud text-3xl font-black text-emerald-300 glow-text-emerald mt-1">
-                              ${clientPaymentReceipt.amountPaid.toLocaleString('es-CO')} COP
+                              ${(clientPaymentReceipt.amountPaid || clientPaymentReceipt.amount || liveAmount).toLocaleString('es-CO')} COP
                             </div>
                           </div>
 
@@ -2453,7 +2739,7 @@
                             </div>
 
                             <p className="font-mono text-[10px] text-slate-400 leading-relaxed">
-                              Pago digital inmediato. Al confirmar se libera tu celda y la barrera se elevará automáticamente al acercarte con tu placa.
+                              Pago digital con tarjeta. Al notificar tu pago, el operador en Salida y Cobro validará la transacción y autorizará la apertura de la barrera.
                             </p>
                           </div>
 
@@ -2501,7 +2787,7 @@
                             </div>
 
                             <p className="font-mono text-[10px] text-slate-400 leading-relaxed">
-                              Genera tu orden de pago para cancelar en efectivo al operador o cajero automático antes de salir del parqueadero.
+                              Genera tu orden y notificación de pago para cancelar en taquilla al operador. El operador validará la recepción del efectivo y elevará la barrera.
                             </p>
                           </div>
                         </div>
@@ -4133,6 +4419,7 @@
             {activeView === 'salida-y-cobro' && userRole !== 'cliente' && (() => {
               const cleanSearch = (searchQuery || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
               const occupiedCells = cells.filter(c => c.status === 'occupied');
+              const pendingPaymentCells = cells.filter(c => c.status === 'occupied' && (c.isPaymentPendingApproval || c.pendingPayment));
               
               // Buscar celda que coincida con la placa digitada o el ID de celda
               const matchedCell = cleanSearch
@@ -4155,11 +4442,103 @@
                       <h1 className="font-hud text-2xl font-black text-white">SALIDA Y LIQUIDACIÓN AUTOMATIZADA</h1>
                     </div>
                     <div className="flex items-center gap-2 font-mono text-xs">
+                      {pendingPaymentCells.length > 0 && (
+                        <span className="px-3 py-1.5 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-300 font-bold animate-pulse flex items-center gap-1.5">
+                          <span className="material-symbols-outlined text-[16px]">notification_important</span>
+                          <span>{pendingPaymentCells.length} pagos por validar</span>
+                        </span>
+                      )}
                       <span className="px-3 py-1.5 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-300">
                         {occupiedCells.length} vehículos en patio
                       </span>
                     </div>
                   </div>
+
+                  {/* Banner de Pagos Notificados por Clientes Pendientes de Validación */}
+                  {pendingPaymentCells.length > 0 && (
+                    <div className="p-5 rounded-2xl border border-amber-500/50 bg-gradient-to-r from-amber-950/40 via-black/85 to-amber-950/30 flex flex-col gap-4 shadow-[0_0_35px_rgba(245,158,11,0.25)] animate-fadeIn">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-amber-500/30 gap-2">
+                        <div className="flex items-center gap-3">
+                          <span className="w-3 h-3 rounded-full bg-amber-400 animate-ping" />
+                          <h2 className="font-hud text-base font-black text-amber-300 tracking-wider flex items-center gap-2">
+                            <span>🔔 PAGOS REPORTADOS POR CLIENTES PENDIENTES DE VALIDACIÓN ({pendingPaymentCells.length})</span>
+                          </h2>
+                        </div>
+                        <span className="font-mono text-xs text-amber-400 font-bold bg-amber-500/20 px-3 py-1 rounded-full border border-amber-500/40">
+                          VALIDACIÓN REQUERIDA PARA ABRIR BARRERA
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {pendingPaymentCells.map(c => {
+                          const pay = c.pendingPayment || {};
+                          const bill = calculateDetailedBilling(c);
+                          const amt = pay.amount || bill.totalDue;
+                          const dur = getLiveDuration(c);
+                          return (
+                            <div key={c.id} className="p-4 rounded-xl border border-amber-500/40 bg-black/80 flex flex-col justify-between gap-3 shadow-lg">
+                              <div className="flex items-start justify-between">
+                                <div>
+                                  <span className="font-mono text-[10px] text-amber-400 uppercase font-bold block">
+                                    BAHÍA {c.id} · {c.type || c.category || 'Carro'}
+                                  </span>
+                                  <div className="plate-bezel px-3 py-0.5 rounded mt-1 inline-block">
+                                    <span className="font-mono text-xl font-black text-yellow-300 tracking-wider">{c.plate}</span>
+                                  </div>
+                                  <div className="font-mono text-[11px] text-slate-300 mt-1">
+                                    Conductor: <strong className="text-white">{c.driverName || pay.driverName || 'Cliente Web'}</strong>
+                                  </div>
+                                </div>
+                                <div className="text-right">
+                                  <span className="font-mono text-[10px] text-slate-400 block">Monto Reportado:</span>
+                                  <span className="font-hud text-lg font-black text-emerald-400 block">${amt.toLocaleString('es-CO')} COP</span>
+                                  <span className="font-mono text-[10px] text-amber-300 block font-bold">{pay.paymentMethod || 'En Línea'}</span>
+                                </div>
+                              </div>
+
+                              <div className="p-2 rounded-lg bg-white/5 border border-white/10 font-mono text-[11px] flex justify-between text-slate-300">
+                                <span>Permanencia: <strong className="text-cyan-300">{dur}</strong></span>
+                                <span>Hora Reporte: <strong className="text-slate-200">{pay.paidAt || pay.timeStr || '--'}</strong></span>
+                              </div>
+
+                              <div className="flex items-center gap-2 pt-1">
+                                <button
+                                  type="button"
+                                  onClick={() => handleConfirmClientPayment(c.id)}
+                                  className="flex-1 py-2.5 rounded-xl font-hud text-xs font-black cyber-btn-emerald cursor-pointer flex items-center justify-center gap-1.5 shadow-[0_0_15px_rgba(0,255,157,0.3)]"
+                                >
+                                  <span className="material-symbols-outlined text-[16px]">check_circle</span>
+                                  <span>CONFIRMAR PAGO & ABRIR BARRERA</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    playCyberAudio('click');
+                                    setSearchQuery(c.plate);
+                                    setCheckoutReceipt(null);
+                                    setReceivedAmount(amt);
+                                    showToast(`Cargando liquidación para ${c.plate} en consola`, 'info');
+                                  }}
+                                  className="px-3 py-2.5 rounded-xl font-hud text-[11px] font-bold cyber-btn-cyan cursor-pointer whitespace-nowrap"
+                                  title="Cargar en la consola de caja"
+                                >
+                                  <span className="material-symbols-outlined text-[16px]">search</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleCancelClientPayment(c.id)}
+                                  className="px-3 py-2.5 rounded-xl font-hud text-[11px] font-bold bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 text-rose-300 cursor-pointer"
+                                  title="Rechazar o cancelar reporte de pago"
+                                >
+                                  <span className="material-symbols-outlined text-[16px]">close</span>
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Operator Plate Digitizer & Search Console */}
                   <div className="p-5 rounded-2xl border border-cyan-500/30 bg-black/70 flex flex-col gap-4 shadow-[0_0_30px_rgba(0,240,255,0.15)]">
@@ -4229,6 +4608,7 @@
                         </span>
                         {occupiedCells.map(c => {
                           const isSelected = matchedCell && matchedCell.id === c.id;
+                          const hasPendingPay = c.isPaymentPendingApproval || c.pendingPayment;
                           return (
                             <button
                               key={c.id}
@@ -4249,6 +4629,11 @@
                               <span className="text-cyan-400 font-hud text-[10px]">{c.id}</span>
                               <span className="text-yellow-300 font-black">{c.plate || 'OCUPADA'}</span>
                               <span className="text-[10px] text-slate-400">({c.type || c.category || 'Carro'})</span>
+                              {hasPendingPay && (
+                                <span className="px-1.5 py-0.5 rounded bg-amber-500/25 border border-amber-500/40 text-amber-300 text-[9px] font-bold animate-pulse flex items-center gap-0.5">
+                                  🔔 PAGO
+                                </span>
+                              )}
                             </button>
                           );
                         })}
@@ -4432,6 +4817,45 @@
                           <span>RECEPCIÓN DE PAGO EN TAQUILLA</span>
                           <span className="font-mono text-xs text-emerald-400 font-bold">CAJA ABIERTA</span>
                         </div>
+
+                        {/* Pending client payment alert in liquidation desk */}
+                        {(matchedCell.isPaymentPendingApproval || matchedCell.pendingPayment) && (
+                          <div className="p-4 rounded-xl border border-amber-500/50 bg-amber-950/40 flex flex-col gap-2.5 shadow-[0_0_20px_rgba(245,158,11,0.25)]">
+                            <div className="flex items-center justify-between">
+                              <span className="font-hud text-xs font-black text-amber-300 flex items-center gap-1.5">
+                                <span className="material-symbols-outlined text-[18px] text-amber-400 animate-pulse">notification_important</span>
+                                PAGO REPORTADO POR CLIENTE EN LÍNEA
+                              </span>
+                              <span className="font-mono text-[9px] text-amber-300 bg-amber-500/25 px-2 py-0.5 rounded border border-amber-500/40 font-bold uppercase">
+                                REQUIERE CONFIRMACIÓN
+                              </span>
+                            </div>
+                            <div className="font-mono text-xs text-slate-300 flex flex-col gap-1">
+                              <div className="flex justify-between">
+                                <span className="text-slate-400">Método reportado:</span>
+                                <strong className="text-white">{matchedCell.pendingPayment?.paymentMethod || 'En Línea'}</strong>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-slate-400">Monto reportado:</span>
+                                <strong className="text-emerald-400 text-sm font-black">
+                                  ${(matchedCell.pendingPayment?.amount || billing.totalDue).toLocaleString('es-CO')} COP
+                                </strong>
+                              </div>
+                              <div className="flex justify-between text-[11px] text-slate-400">
+                                <span>Hora de notificación:</span>
+                                <span className="text-slate-200">{matchedCell.pendingPayment?.paidAt || matchedCell.pendingPayment?.timeStr || '--'}</span>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleConfirmClientPayment(matchedCell.id)}
+                              className="w-full py-3 rounded-xl font-hud text-xs font-black cyber-btn-emerald cursor-pointer shadow-[0_0_20px_rgba(0,255,157,0.35)] flex items-center justify-center gap-2 mt-1"
+                            >
+                              <span className="material-symbols-outlined text-[18px]">verified</span>
+                              <span>CONFIRMAR PAGO DEL CLIENTE & ABRIR BARRERA</span>
+                            </button>
+                          </div>
+                        )}
                         
                         {/* Payment Method Selector */}
                         <div className="grid grid-cols-3 gap-2">
