@@ -259,4 +259,116 @@ if ($action === 'login') {
     ]);
 }
 
+// 5. GESTIÓN DE OPERADORES DE TURNO (ADMINISTRADOR GLOBAL)
+if ($action === 'list_operators') {
+    $stmt = $pdo->query("SELECT `id`, `identification`, `name`, `phone`, `plate`, `role`, `badge`, `shift`, `created_at`, `last_login` FROM `users` WHERE `role` = 'operador' ORDER BY `id` ASC");
+    $operators = $stmt->fetchAll();
+    sendResponse([
+        'success' => true,
+        'operators' => $operators
+    ]);
+}
+
+if ($action === 'create_operator') {
+    $name = trim($input['name'] ?? '');
+    $identification = trim($input['identification'] ?? '');
+    $badge = strtoupper(trim($input['badge'] ?? $identification));
+    $phone = trim($input['phone'] ?? '');
+    $shift = trim($input['shift'] ?? 'Turno Mañana [06:00 - 14:00]');
+    $password = (string)($input['password'] ?? $input['pin'] ?? '');
+    $plate = strtoupper(trim($input['plate'] ?? ('OPR-' . rand(100, 999))));
+
+    if (empty($name) || strlen($name) < 3) {
+        sendError("Por favor ingrese el nombre completo del operador (mínimo 3 letras).", 422, ['field' => 'name']);
+    }
+    if (empty($identification) || strlen($identification) < 3) {
+        sendError("El documento de identificación o código es requerido (mínimo 3 caracteres).", 422, ['field' => 'identification']);
+    }
+    if (empty($phone) || strlen($phone) < 7) {
+        sendError("Por favor ingrese un número de teléfono válido (mínimo 7 dígitos).", 422, ['field' => 'phone']);
+    }
+    if (empty($password) || strlen($password) < 4) {
+        sendError("La contraseña o PIN debe tener al menos 4 caracteres.", 422, ['field' => 'password']);
+    }
+
+    // Comprobar duplicado en identificación o badge
+    $stmtId = $pdo->prepare("SELECT id FROM `users` WHERE `identification` = ? OR `badge` = ? LIMIT 1");
+    $stmtId->execute([$identification, $badge]);
+    if ($stmtId->fetch()) {
+        sendError("El documento o código de credencial '{$identification}' ya está asignado a otro usuario.", 409, ['field' => 'identification']);
+    }
+
+    // Comprobar teléfono duplicado
+    $stmtPhone = $pdo->prepare("SELECT id FROM `users` WHERE `phone` = ? LIMIT 1");
+    $stmtPhone->execute([$phone]);
+    if ($stmtPhone->fetch()) {
+        sendError("El teléfono móvil '{$phone}' ya se encuentra registrado con otro usuario.", 409, ['field' => 'phone']);
+    }
+
+    $passwordHash = password_hash($password, PASSWORD_BCRYPT);
+    $passwordSignature = hash('sha256', $password);
+
+    try {
+        $stmtInsert = $pdo->prepare("INSERT INTO `users` (`identification`, `name`, `phone`, `plate`, `role`, `password_hash`, `password_signature`, `badge`, `shift`) VALUES (?, ?, ?, ?, 'operador', ?, ?, ?, ?)");
+        $stmtInsert->execute([
+            $identification,
+            $name,
+            $phone,
+            $plate,
+            $passwordHash,
+            $passwordSignature,
+            $badge,
+            $shift
+        ]);
+        $newId = $pdo->lastInsertId();
+
+        sendResponse([
+            'success' => true,
+            'message' => "¡Operador {$name} ({$badge}) creado exitosamente!",
+            'operator' => [
+                'id' => $newId,
+                'identification' => $identification,
+                'name' => $name,
+                'phone' => $phone,
+                'plate' => $plate,
+                'role' => 'operador',
+                'badge' => $badge,
+                'shift' => $shift,
+                'created_at' => date('Y-m-d H:i:s')
+            ]
+        ], 201);
+    } catch (PDOException $e) {
+        sendError("Error al guardar operador en base de datos: " . $e->getMessage(), 500);
+    }
+}
+
+if ($action === 'delete_operator') {
+    $identifier = trim($input['identification'] ?? $input['id'] ?? $input['badge'] ?? '');
+    if (empty($identifier)) {
+        sendError("Se requiere el identificador o badge del operador a eliminar.", 422);
+    }
+
+    $stmtFind = $pdo->prepare("SELECT id, name, badge, role FROM `users` WHERE (`identification` = ? OR `badge` = ? OR `id` = ?) AND `role` = 'operador' LIMIT 1");
+    $stmtFind->execute([$identifier, $identifier, $identifier]);
+    $op = $stmtFind->fetch();
+
+    if (!$op) {
+        sendError("No se encontró ningún operador activo con identificador '{$identifier}'.", 404);
+    }
+
+    try {
+        $stmtDel = $pdo->prepare("DELETE FROM `users` WHERE `id` = ?");
+        $stmtDel->execute([$op['id']]);
+
+        sendResponse([
+            'success' => true,
+            'message' => "Operador {$op['name']} ({$op['badge']}) eliminado correctamente.",
+            'deletedId' => $op['id'],
+            'identification' => $op['badge']
+        ]);
+    } catch (PDOException $e) {
+        sendError("Error al eliminar operador: " . $e->getMessage(), 500);
+    }
+}
+
 sendError("Acción no válida o no soportada", 400);
